@@ -1,32 +1,117 @@
-name: Build Android APK
+name: Build Phantom Ops Android APK
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     name: Build Godot Android APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4- name: Setup Java 17
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Export Godot 4.2 APK
-        uses: dulvui/godot-android-export@v4.0.0
-        with:
-          godot-version: '4.2.2'project-directory: 'project'
-          export-debug: 'true'
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
 
-      - name: Upload APK
+      - name: Install Godot 4.2.2
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip \
+            -O godot.zip
+
+          unzip -q godot.zip
+
+          sudo install \
+            Godot_v4.2.2-stable_linux.x86_64 \
+            /usr/local/bin/godot
+
+          godot --version
+
+      - name: Install Godot export templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable
+
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz \
+            -O templates.tpz
+
+          mkdir templates
+          unzip -q templates.tpz -d templates
+
+          cp -r templates/templates/. \
+            ~/.local/share/godot/export_templates/4.2.2.stable/
+
+      - name: Configure Android signing
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore project/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+          mkdir -p ~/.config/godot
+
+          cat > ~/.config/godot/editor_settings-4.tres <<EOF2
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$GITHUB_WORKSPACE/project/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF2
+
+      - name: Validate and import project
+        run: |
+          godot --headless \
+            --editor \
+            --path project \
+            --quit
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build
+
+          godot --headless \
+            --path project \
+            --export-debug \
+            "Android" \
+            "$GITHUB_WORKSPACE/build/PhantomOps.apk"
+
+          test -s build/PhantomOps.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhantomOps-Debug-APK
-          path: '**/*.apk'
+          name: PhantomOps-Release-APK
+          path: build/PhantomOps.apk
+          if-no-files-found: error
+          retention-days: 14
