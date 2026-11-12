@@ -11,7 +11,7 @@ var is_dead := false
 var gravity := 9.8
 var mobile_move := Vector2.ZERO
 var mobile_sprinting := false
-var mobile_hud: Control
+var mobile_hud
 var is_paused := false
 @onready var camera: Camera3D = $Head/Camera3D
 func _ready() -> void:
