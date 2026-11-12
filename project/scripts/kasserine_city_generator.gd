@@ -209,7 +209,11 @@ func _build_vegetation() -> void:
 		tree.add_child(crown)
 
 func _spawn_hostiles() -> void:
-	if player == null: return
+	# Player._ready runs after this generator's _ready; resolve it now, not earlier.
+	player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		push_warning("PHANTOM OPS: player node missing; infected spawn skipped")
+		return
 	for i in range(zombie_count):
 		var enemy := CharacterBody3D.new()
 		enemy.name = "Infected_%02d" % i
@@ -286,13 +290,13 @@ func _apply_weather() -> void:
 			env.fog_density = 0.0032
 			env.ambient_light_energy = 0.62
 			sun.light_energy = 0.75
-	2: # rain
-		rain_particles.emitting = true
-		env.fog_density = 0.005
-		env.ambient_light_energy = 0.55
-		sun.light_energy = 0.55
-	3: # night storm
-		rain_particles.emitting = true
-		env.fog_density = 0.007
-		env.ambient_light_energy = 0.38
-		sun.light_energy = 0.18
+		2: # rain
+			rain_particles.emitting = true
+			env.fog_density = 0.005
+			env.ambient_light_energy = 0.55
+			sun.light_energy = 0.55
+		3: # night storm
+			rain_particles.emitting = true
+			env.fog_density = 0.007
+			env.ambient_light_energy = 0.38
+			sun.light_energy = 0.18
