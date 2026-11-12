@@ -22,6 +22,10 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	queue_redraw()
 
+func _scale() -> float:
+	var s := get_viewport_rect().size
+	return clampf(minf(s.x / 600.0, s.y / 1050.0), 1.0, 1.65)
+
 func _process(delta: float) -> void:
 	if fire_flash > 0.0:
 		fire_flash = maxf(0.0, fire_flash - delta)
@@ -31,85 +35,98 @@ func _draw() -> void:
 	var s := get_viewport_rect().size
 	var w := s.x
 	var h := s.y
-	var scale := clampf(minf(w / 960.0, h / 540.0), 0.82, 1.45)
+	var k := _scale()
 	var f := ThemeDB.fallback_font
-	var joy := Vector2(132.0 * scale, h - 136.0 * scale)
-	var radius := 82.0 * scale
-	# Mission strip and health bar
-	draw_rect(Rect2(20, 18, 290 * scale, 58 * scale), Color(0.025,0.045,0.065,0.82), true)
-	draw_rect(Rect2(20, 18, 4 * scale, 58 * scale), Color(0.96,0.36,0.18,1), true)
-	draw_string(f, Vector2(36 * scale, 40 * scale), "PHANTOM OPS  /  FIELD REPORT", HORIZONTAL_ALIGNMENT_LEFT, 270 * scale, int(13 * scale), Color(0.72,0.83,0.9))
-	draw_string(f, Vector2(36 * scale, 61 * scale), "SURVIVE  •  ELIMINATE HOSTILES", HORIZONTAL_ALIGNMENT_LEFT, 270 * scale, int(15 * scale), Color.WHITE)
-	# Joystick - substantially larger and screen-relative
-	_button(joy, radius, Color(0.035,0.075,0.105,0.68), scale)
-	_button(joy + move_value * radius * 0.52, radius * 0.39, Color(0.45,0.67,0.78,0.88), scale)
-	draw_string(f, Vector2(joy.x - 32 * scale, joy.y + radius + 22 * scale), "MOVE", HORIZONTAL_ALIGNMENT_CENTER, 64 * scale, int(14 * scale), Color(0.85,0.92,0.96))
-	# Right-hand combat cluster
-	var fire := Vector2(w - 112 * scale, h - 142 * scale)
-	var jump := Vector2(w - 250 * scale, h - 78 * scale)
-	var sprint := Vector2(w - 250 * scale, h - 210 * scale)
-	_button(fire, 59 * scale, Color(0.65,0.13,0.10,0.88 if fire_flash <= 0 else 1.0), scale)
-	draw_string(f, Vector2(fire.x - 34 * scale, fire.y + 6 * scale), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 68 * scale, int(18 * scale), Color.WHITE)
-	_button(jump, 43 * scale, Color(0.12,0.34,0.53,0.88), scale)
-	draw_string(f, Vector2(jump.x - 31 * scale, jump.y + 5 * scale), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, 62 * scale, int(14 * scale), Color.WHITE)
-	_button(sprint, 40 * scale, Color(0.16,0.39,0.29,0.88), scale)
-	draw_string(f, Vector2(sprint.x - 29 * scale, sprint.y + 5 * scale), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 58 * scale, int(14 * scale), Color.WHITE)
-	# Pause
-	_button(Vector2(w - 45 * scale, 43 * scale), 27 * scale, Color(0.035,0.065,0.085,0.92), scale)
-	draw_string(f, Vector2(w - 55 * scale, 49 * scale), "Ⅱ", HORIZONTAL_ALIGNMENT_CENTER, 20 * scale, int(20 * scale), Color.WHITE)
+	# Larger, readable mission panel.
+	draw_rect(Rect2(18*k, 18*k, 360*k, 82*k), Color(0.018,0.035,0.05,0.9), true)
+	draw_rect(Rect2(18*k, 18*k, 6*k, 82*k), Color(0.96,0.36,0.18,1), true)
+	draw_string(f, Vector2(36*k, 50*k), "PHANTOM OPS  /  FIELD REPORT", HORIZONTAL_ALIGNMENT_LEFT, 330*k, int(17*k), Color(0.78,0.88,0.93))
+	draw_string(f, Vector2(36*k, 80*k), "SURVIVE  •  ELIMINATE HOSTILES", HORIZONTAL_ALIGNMENT_LEFT, 330*k, int(18*k), Color.WHITE)
+	# Tactical minimap with player marker and hostile blips.
+	var map_center := Vector2(w - 92*k, 142*k)
+	var map_size := 142*k
+	draw_rect(Rect2(map_center - Vector2(map_size/2, map_size/2), Vector2(map_size,map_size)), Color(0.015,0.04,0.05,0.88), true)
+	draw_rect(Rect2(map_center - Vector2(map_size/2, map_size/2), Vector2(map_size,map_size)), Color(0.56,0.72,0.76,0.9), false, 2*k)
+	for i in range(-2,3):
+		draw_line(map_center + Vector2(i*22*k,-map_size/2), map_center + Vector2(i*22*k,map_size/2), Color(0.20,0.34,0.37,0.8), 1*k)
+		draw_line(map_center + Vector2(-map_size/2,i*22*k), map_center + Vector2(map_size/2,i*22*k), Color(0.20,0.34,0.37,0.8), 1*k)
+	draw_circle(map_center, 7*k, Color(0.25,0.82,0.95))
+	draw_circle(map_center + Vector2(25*k,-19*k), 5*k, Color(0.95,0.20,0.12))
+	draw_circle(map_center + Vector2(-32*k,27*k), 5*k, Color(0.95,0.20,0.12))
+	draw_string(f, map_center + Vector2(-45*k,map_size/2 + 22*k), "RADAR", HORIZONTAL_ALIGNMENT_CENTER, 90*k, int(13*k), Color(0.78,0.88,0.93))
+	# Large movement pad.
+	var joy := Vector2(154*k, h - 190*k)
+	var radius := 112*k
+	_button(joy, radius, Color(0.025,0.065,0.09,0.78), k)
+	_button(joy + move_value * radius * 0.48, radius * 0.40, Color(0.36,0.67,0.80,0.94), k)
+	draw_string(f, Vector2(joy.x - 48*k, joy.y + radius + 30*k), "MOVE", HORIZONTAL_ALIGNMENT_CENTER, 96*k, int(17*k), Color.WHITE)
+	# Big combat buttons spaced for thumbs.
+	var fire := Vector2(w - 112*k, h - 190*k)
+	var jump := Vector2(w - 270*k, h - 92*k)
+	var sprint := Vector2(w - 270*k, h - 285*k)
+	_button(fire, 82*k, Color(0.65,0.13,0.10,0.94 if fire_flash <= 0 else 1.0), k)
+	draw_string(f, Vector2(fire.x - 48*k, fire.y + 8*k), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 96*k, int(22*k), Color.WHITE)
+	_button(jump, 61*k, Color(0.12,0.34,0.53,0.94), k)
+	draw_string(f, Vector2(jump.x - 42*k, jump.y + 7*k), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, 84*k, int(17*k), Color.WHITE)
+	_button(sprint, 59*k, Color(0.12,0.42,0.30,0.94), k)
+	draw_string(f, Vector2(sprint.x - 42*k, sprint.y + 7*k), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 84*k, int(18*k), Color.WHITE)
+	_button(Vector2(w - 50*k, 48*k), 34*k, Color(0.02,0.05,0.07,0.96), k)
+	draw_string(f, Vector2(w - 65*k, 57*k), "Ⅱ", HORIZONTAL_ALIGNMENT_CENTER, 30*k, int(25*k), Color.WHITE)
 	if paused:
-		draw_rect(Rect2(Vector2.ZERO, s), Color(0.008,0.016,0.025,0.88), true)
-		draw_string(f, Vector2(w/2 - 160 * scale, h*0.34), "MISSION PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 320 * scale, int(30 * scale), Color.WHITE)
-		_button(Vector2(w/2, h*0.49), 54 * scale, Color(0.12,0.47,0.32,1), scale)
-		draw_string(f, Vector2(w/2 - 72 * scale, h*0.49 + 7 * scale), "RESUME", HORIZONTAL_ALIGNMENT_CENTER, 144 * scale, int(18 * scale), Color.WHITE)
-		_button(Vector2(w/2, h*0.64), 54 * scale, Color(0.55,0.16,0.12,1), scale)
-		draw_string(f, Vector2(w/2 - 90 * scale, h*0.64 + 7 * scale), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 180 * scale, int(17 * scale), Color.WHITE)
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0.008,0.016,0.025,0.9), true)
+		draw_string(f, Vector2(w/2 - 180*k, h*0.35), "MISSION PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 360*k, int(34*k), Color.WHITE)
+		_button(Vector2(w/2, h*0.49), 76*k, Color(0.12,0.47,0.32,1), k)
+		draw_string(f, Vector2(w/2 - 88*k, h*0.49 + 8*k), "RESUME", HORIZONTAL_ALIGNMENT_CENTER, 176*k, int(22*k), Color.WHITE)
+		_button(Vector2(w/2, h*0.64), 76*k, Color(0.55,0.16,0.12,1), k)
+		draw_string(f, Vector2(w/2 - 110*k, h*0.64 + 8*k), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 220*k, int(20*k), Color.WHITE)
 
-func _button(p: Vector2, r: float, color: Color, scale: float) -> void:
+func _button(p: Vector2, r: float, color: Color, k: float) -> void:
 	draw_circle(p, r, color)
-	draw_arc(p, r, 0.0, TAU, 48, Color(0.78,0.88,0.94,0.85), maxf(1.5, 2.0 * scale), true)
+	draw_arc(p, r, 0.0, TAU, 48, Color(0.82,0.91,0.96,0.95), maxf(2.0, 2.5*k), true)
 
 func _gui_input(e: InputEvent) -> void:
 	var s := get_viewport_rect().size
-	var scale := clampf(minf(s.x / 960.0, s.y / 540.0), 0.82, 1.45)
+	var w := s.x
+	var h := s.y
+	var k := _scale()
 	if e is InputEventScreenTouch:
-		if e.pressed: _start(e.index, e.position, s.x, s.y, scale)
+		if e.pressed: _start(e.index, e.position, w, h, k)
 		else: _end(e.index)
 		accept_event()
 	elif e is InputEventScreenDrag:
 		if e.index == joy_id:
-			var center := Vector2(132.0 * scale, s.y - 136.0 * scale)
-			move_value = ((e.position - center) / (82.0 * scale)).limit_length(1.0)
+			var center := Vector2(154*k, h - 190*k)
+			move_value = ((e.position - center) / (112*k)).limit_length(1.0)
 			move_changed.emit(move_value)
 			queue_redraw()
 		elif e.index == look_id and not paused:
 			look_delta.emit(e.relative)
 		accept_event()
 	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
-		if e.pressed: _start(-2, e.position, s.x, s.y, scale)
+		if e.pressed: _start(-2, e.position, w, h, k)
 		else: _end(-2)
 	elif e is InputEventMouseMotion and look_id == -2 and not paused:
 		look_delta.emit(e.relative)
 
-func _start(id: int, p: Vector2, w: float, h: float, scale: float) -> void:
+func _start(id: int, p: Vector2, w: float, h: float, k: float) -> void:
 	if paused:
-		if absf(p.y - h*0.49) < 66*scale: resume_pressed.emit()
-		elif absf(p.y - h*0.64) < 66*scale: menu_pressed.emit()
+		if absf(p.y - h*0.49) < 90*k: resume_pressed.emit()
+		elif absf(p.y - h*0.64) < 90*k: menu_pressed.emit()
 		return
-	if p.x > w - 78*scale and p.y < 82*scale:
+	if p.x > w - 95*k and p.y < 100*k:
 		pause_pressed.emit()
-	elif p.x < w*0.43 and p.y > h*0.53:
+	elif p.x < w*0.46 and p.y > h*0.52:
 		joy_id = id
-		var center := Vector2(132.0*scale, h-136.0*scale)
-		move_value = ((p-center)/(82.0*scale)).limit_length(1.0)
+		var center := Vector2(154*k, h-190*k)
+		move_value = ((p-center)/(112*k)).limit_length(1.0)
 		move_changed.emit(move_value)
 		queue_redraw()
-	elif p.x > w-310*scale and p.y > h-250*scale:
-		if p.x > w-185*scale and p.y > h-110*scale:
+	elif p.x > w-365*k and p.y > h-385*k:
+		if p.x > w-210*k and p.y > h-300*k:
 			fire_flash = 0.16
 			fire_pressed.emit()
 			queue_redraw()
-		elif p.y < h-135*scale:
+		elif p.y < h-205*k:
 			sprinting = true
 			sprint_changed.emit(true)
 		else:
