@@ -52,7 +52,7 @@ jobs:
       - name: Configure Android signing
         run: |
           mkdir -p project
-          keytool -genkeypair -v -keystore project/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          rm -f project/debug.keystore\n          keytool -genkeypair -v -keystore project/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p ~/.config/godot
           cat > ~/.config/godot/editor_settings-4.tres <<EOF2
           [gd_resource type="EditorSettings" format=3]
