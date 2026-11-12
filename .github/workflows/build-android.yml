@@ -67,16 +67,26 @@ jobs:
 
       - name: Configure Android signing
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore project/debug.keystore \
-            -alias androiddebugkey \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p project
+
+          if [ ! -f project/debug.keystore ] || \
+             ! keytool -list \
+               -keystore project/debug.keystore \
+               -storepass android \
+               -alias androiddebugkey >/dev/null 2>&1; then
+            rm -f project/debug.keystore
+
+            keytool -genkeypair \
+              -v \
+              -keystore project/debug.keystore \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
           mkdir -p ~/.config/godot
 
