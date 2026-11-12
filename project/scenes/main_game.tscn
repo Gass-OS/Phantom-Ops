@@ -13,7 +13,7 @@ height = 1.8
 script = ExtResource("1")
 
 [node name="Player" type="CharacterBody3D" parent="."]
-position = Vector3(0, 0.95, 10)
+position = Vector3(0, 1.0, 12.0)
 script = ExtResource("2")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
@@ -24,4 +24,3 @@ position = Vector3(0, 0.55, 0)
 
 [node name="Camera3D" type="Camera3D" parent="Player/Head"]
 current = true
-position = Vector3(0, 0, 0)
