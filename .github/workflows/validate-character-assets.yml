@@ -1,0 +1,69 @@
+name: Validate Phantom Ops Character Assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/phantom-v3
+    paths:
+      - 'asset_sources/quaternius_characters/**'
+      - 'tools/fbx_validation/**'
+      - '.github/workflows/validate-character-assets.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-characters:
+    name: Import and validate animated FBX models
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.3
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip \
+            -O godot.zip
+
+          unzip -q godot.zip
+
+          sudo install \
+            Godot_v4.3-stable_linux.x86_64 \
+            /usr/local/bin/godot
+
+          godot --version
+
+      - name: Prepare isolated validation project
+        run: |
+          mkdir -p tools/fbx_validation/assets
+          cp asset_sources/quaternius_characters/*.fbx \
+             tools/fbx_validation/assets/
+
+          test "$(find tools/fbx_validation/assets \
+            -maxdepth 1 -name '*.fbx' | wc -l)" -eq 6
+
+      - name: Import FBX models
+        run: |
+          godot --headless \
+            --editor \
+            --path tools/fbx_validation \
+            --import \
+            --quit
+
+      - name: Validate skeletons and animation clips
+        run: |
+          godot --headless \
+            --path tools/fbx_validation \
+            --script res://validate_fbx.gd
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhantomOps-Character-Validation
+          path: tools/fbx_validation/validation-report.txt
+          if-no-files-found: warn
+          retention-days: 14
