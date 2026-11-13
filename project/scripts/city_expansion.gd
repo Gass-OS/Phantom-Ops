@@ -5,7 +5,7 @@ const TrafficCar = preload("res://scripts/traffic_car.gd")
 const Citizen = preload("res://scripts/citizen.gd")
 
 @export_range(2, 5) var district_radius := 3
-@export var block_spacing := 52.0
+@export var block_spacing := 56.0
 @export var traffic_count := 18
 @export var extra_citizens := 64
 
@@ -97,7 +97,7 @@ func _build_city_grid() -> void:
 			# Four close-packed buildings per block, with varied heights and footprints.
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
-					var offset := Vector3(sx * 12.4, 0, sz * 12.4)
+					var offset := Vector3(sx * 19.0, 0, sz * 19.0)
 					var seed_value := (gx * 97 + gz * 31 + int(sx + 2) * 11 + int(sz + 2) * 7) & 0x7fffffff
 					_create_building(center + offset, seed_value)
 	# Continuous outer boulevard defines a readable city boundary.
@@ -108,7 +108,7 @@ func _build_city_grid() -> void:
 
 func _create_building(at: Vector3, seed_value: int) -> void:
 	var height := rng.randf_range(8.5, 22.0)
-	var width := rng.randf_range(14.0, 18.5)
+	var width := rng.randf_range(14.0, 16.8)
 	var depth := rng.randf_range(14.0, 18.5)
 	var body := StaticBody3D.new()
 	body.name = "DistrictBuilding_%d" % seed_value
