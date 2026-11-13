@@ -1,19 +1,20 @@
 extends Node
 
 @export var enabled := true
-@export var minimum_interval := 24.0
-@export var maximum_interval := 42.0
+@export var minimum_interval := 18.0
+@export var maximum_interval := 30.0
 
-var timer := 12.0
+var timer := 5.0
 var voice_id := ""
 var voice_locale := "en"
 
 func _ready() -> void:
 	if not enabled:
 		return
+	randomize()
 	var voices: Array = DisplayServer.tts_get_voices()
 	if voices.is_empty():
-		print("PHANTOM OPS: system TTS unavailable; ambient voice disabled safely")
+		print("PHANTOM OPS: Android TTS returned no installed voices; install/enable a system speech engine in Android settings")
 		return
 	# Prefer French for the Tunisian city ambience, then Arabic, then English.
 	for wanted in ["fr", "ar", "en"]:
@@ -27,7 +28,6 @@ func _ready() -> void:
 			break
 	if voice_id.is_empty():
 		voice_id = str(voices[0].get("id", ""))
-		randomize()
 	timer = randf_range(minimum_interval, maximum_interval)
 
 func _process(delta: float) -> void:
@@ -64,7 +64,8 @@ func _process(delta: float) -> void:
 				"Watch out, a car is coming."
 			]
 	var phrase := phrases[randi() % phrases.size()]
-	DisplayServer.tts_speak(phrase, voice_id, 0.28, 1.0, 0.92, 1)
+	DisplayServer.tts_speak(phrase, voice_id, 1.0, 1.0, 0.95, 1)
+	print("PHANTOM OPS: ambient voice requested: ", voice_locale)
 	timer = randf_range(minimum_interval, maximum_interval)
 
 func _exit_tree() -> void:
