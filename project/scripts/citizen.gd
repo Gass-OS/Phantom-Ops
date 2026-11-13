@@ -14,6 +14,8 @@ var threat_dir: Vector3 = Vector3.ZERO
 
 var arm_l: Node3D
 var arm_r: Node3D
+var leg_l: Node3D
+var leg_r: Node3D
 
 var skins = [Color(0.87, 0.70, 0.52), Color(0.76, 0.58, 0.42), Color(0.68, 0.50, 0.36)]
 var robe_colors = [
@@ -34,6 +36,8 @@ func _ready():
 
     axis = randi() % 2
     lane = [-45.0, 0.0, 45.0][randi() % 3] + [-3.2, 3.2][randi() % 2]
+    floor_snap_length = 0.42
+    floor_stop_on_slope = true
     position = _lane_point(randf_range(-100.0, 100.0))
     target = _lane_point(randf_range(-100.0, 100.0))
 
@@ -48,8 +52,8 @@ func _ready():
 
 func _lane_point(along: float) -> Vector3:
     if axis == 0:
-        return Vector3(along, 1.0, lane)
-    return Vector3(lane, 1.0, along)
+        return Vector3(along, 0.9, lane)
+    return Vector3(lane, 0.9, along)
 
 func _part(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
     var mi = MeshInstance3D.new()
@@ -114,6 +118,18 @@ func _build_model():
     # Arms
     arm_l = _make_arm(Vector3(-0.30, 0.4, 0), cloth, skin)
     arm_r = _make_arm(Vector3(0.30, 0.4, 0), cloth, skin)
+    leg_l = _make_leg(Vector3(-0.14, -0.65, 0), cloth)
+    leg_r = _make_leg(Vector3(0.14, -0.65, 0), cloth)
+
+func _make_leg(pos: Vector3, cloth: Color) -> Node3D:
+    var pivot = Node3D.new()
+    pivot.position = pos
+    add_child(pivot)
+    var leg = CapsuleMesh.new()
+    leg.radius = 0.085
+    leg.height = 0.72
+    _part(leg, cloth, Vector3(0, -0.30, 0), pivot)
+    return pivot
 
 func _make_arm(pos: Vector3, cloth: Color, skin: Color) -> Node3D:
     var pivot = Node3D.new()
@@ -133,7 +149,9 @@ func _make_arm(pos: Vector3, cloth: Color, skin: Color) -> Node3D:
 
 func _physics_process(delta):
     if not is_on_floor():
-        velocity.y -= gravity * delta
+        velocity.y = maxf(velocity.y - gravity * delta, -28.0)
+    elif velocity.y < 0.0:
+        velocity.y = 0.0
 
     # Look for zombies nearby
     flee_timer -= delta
@@ -175,6 +193,10 @@ func _physics_process(delta):
         walk_phase += delta * spd * 3.0
         arm_l.rotation.x = sin(walk_phase) * 0.6
         arm_r.rotation.x = -sin(walk_phase) * 0.6
+        leg_l.rotation.x = -sin(walk_phase) * 0.48
+        leg_r.rotation.x = sin(walk_phase) * 0.48
     else:
         arm_l.rotation.x = lerpf(arm_l.rotation.x, 0.0, delta * 5.0)
         arm_r.rotation.x = lerpf(arm_r.rotation.x, 0.0, delta * 5.0)
+        leg_l.rotation.x = lerpf(leg_l.rotation.x, 0.0, delta * 5.0)
+        leg_r.rotation.x = lerpf(leg_r.rotation.x, 0.0, delta * 5.0)
