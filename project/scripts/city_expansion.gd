@@ -38,12 +38,12 @@ func _generate_world() -> void:
 
 func _build_city_life() -> void:
 	# Small outer-district landmarks: additions only; the existing building blocks stay intact.
-	_build_storefront("PHARMACY", Vector3(154, 0, -72), Color(0.10, 0.48, 0.30), "✚")
-	_build_storefront("MAGAZINE", Vector3(-154, 0, 72), Color(0.12, 0.30, 0.48), "NEWS")
-	_build_school(Vector3(-154, 0, -72))
-	_build_mosque(Vector3(0, 0, -158))
-	_build_park(Vector3(0, 0, 158))
-	_build_market(Vector3(154, 0, 72))
+	_build_storefront("PHARMACY", Vector3(28, 0, 28), Color(0.10, 0.48, 0.30), "✚")
+	_build_storefront("MAGAZINE", Vector3(-28, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
+	_build_school(Vector3(84, 0, 28))
+	_build_mosque(Vector3(-84, 0, 28))
+	_build_park(Vector3(28, 0, -28))
+	_build_market(Vector3(-28, 0, -28))
 	print("PHANTOM OPS: pharmacy, newsstand, school, mosque, park and produce market added")
 
 func _label(parent: Node3D, caption: String, at: Vector3, color: Color) -> void:
@@ -381,7 +381,7 @@ func _spawn_residents() -> void:
 		person.spawn_radius = 150.0
 		person.axis = i % 2
 		var road_index := posmod(i * 3 + int(i / 5), district_radius * 2 + 1) - district_radius
-		var side_offset := 9.2 if (i / 2) % 2 == 0 else -9.2
+		var side_offset := 10.8 if (i / 2) % 2 == 0 else -10.8
 		person.lane = float(road_index) * block_spacing + side_offset
 		add_child(person)
 		person.position.y = 0.92
