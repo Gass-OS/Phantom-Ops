@@ -6,7 +6,7 @@ const ZombieScript = preload("res://scripts/enemy_ai.gd")
 var player: Node3D = null
 var spawn_timer := 4.0
 var max_zombies := 8
-var population_target := 42
+var population_target := 48
 var population_check := 0.0
 
 func _ready() -> void:
@@ -30,9 +30,10 @@ func _spawn_citizen(index: int) -> void:
 	citizen.variant = index + 60
 	citizen.spawn_near_center = true
 	citizen.spawn_center = player.global_position
-	citizen.spawn_radius = 58.0
+	citizen.spawn_radius = 46.0
 	citizen.axis = index % 2
-	citizen.lane = (player.global_position.z if citizen.axis == 0 else player.global_position.x) + (9.2 if index % 4 < 2 else -9.2)
+	var road_index := roundi((player.global_position.z if citizen.axis == 0 else player.global_position.x) / 56.0)
+	citizen.lane = float(road_index) * 56.0 + (9.2 if index % 4 < 2 else -9.2)
 	get_parent().add_child(citizen)
 
 func _process(delta: float) -> void:
