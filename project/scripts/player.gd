@@ -26,6 +26,9 @@ var visual_right_arm: Node3D
 
 func _ready() -> void:
 	add_to_group("player")
+	collision_layer = 1
+	collision_mask = 1 | 2 | 4
+	safe_margin = 0.06
 	current_health = max_health
 	floor_snap_length = 0.45
 	floor_stop_on_slope = true
