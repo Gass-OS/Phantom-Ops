@@ -5,6 +5,9 @@ var variant: int = 0
 
 var axis: int = 0
 var city_extent: float = 220.0
+var spawn_near_center: bool = false
+var spawn_center: Vector3 = Vector3.ZERO
+var spawn_radius: float = 55.0
 var lane: float = 0.0
 var target: Vector3 = Vector3.ZERO
 var wait_time: float = 0.0
@@ -36,11 +39,16 @@ func _ready():
     add_to_group("civilian")
 
     axis = randi() % 2
-    lane = [-160.0, -80.0, 0.0, 80.0, 160.0][randi() % 5] + [-3.2, 3.2][randi() % 2]
     floor_snap_length = 0.42
     floor_stop_on_slope = true
-    position = _lane_point(randf_range(-city_extent, city_extent))
-    target = _lane_point(randf_range(-100.0, 100.0))
+    if spawn_near_center:
+        lane = (spawn_center.z if axis == 0 else spawn_center.x) + [-3.2, 3.2][randi() % 2]
+        position = _lane_point(randf_range(-spawn_radius, spawn_radius))
+        target = _lane_point(randf_range(-spawn_radius, spawn_radius))
+    else:
+        lane = [-160.0, -80.0, 0.0, 80.0, 160.0][randi() % 5] + [-3.2, 3.2][randi() % 2]
+        position = _lane_point(randf_range(-city_extent, city_extent))
+        target = _lane_point(randf_range(-100.0, 100.0))
 
     var col = CollisionShape3D.new()
     var cap = CapsuleShape3D.new()
@@ -53,8 +61,8 @@ func _ready():
 
 func _lane_point(along: float) -> Vector3:
     if axis == 0:
-        return Vector3(along, 0.9, lane)
-    return Vector3(lane, 0.9, along)
+        return Vector3(spawn_center.x + along, 0.9, lane)
+    return Vector3(lane, 0.9, spawn_center.z + along)
 
 func _part(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
     var mi = MeshInstance3D.new()
