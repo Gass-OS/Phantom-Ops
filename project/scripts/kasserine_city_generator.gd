@@ -132,13 +132,14 @@ func _build_ground_and_roads() -> void:
 		_box(self, "CrossMark_%d" % i, Vector3(3.2,0.025,0.22), Vector3(i*9.0,0.071,0), marking)
 
 func _build_city_blocks() -> void:
+	# Keep the original 24 buildings, but move this legacy ring beyond the 56m
+	# expansion grid so none of their footprints intrude into its carriageways.
 	var plots := [
-		Vector2(-105,-105), Vector2(-105,-45), Vector2(-105,45), Vector2(-105,105),
-		Vector2(-45,-105), Vector2(-45,105), Vector2(45,-105), Vector2(45,105),
-		Vector2(105,-105), Vector2(105,-45), Vector2(105,45), Vector2(105,105),
-		Vector2(-80,-80), Vector2(-80,80), Vector2(80,-80), Vector2(80,80),
-		Vector2(-45,-45), Vector2(-45,45), Vector2(45,-45), Vector2(45,45),
-		Vector2(-80,-45), Vector2(80,-45), Vector2(-80,45), Vector2(80,45)
+		Vector2(-140,-140), Vector2(-140,-84), Vector2(-140,-28), Vector2(-140,28), Vector2(-140,84), Vector2(-140,140),
+		Vector2(140,-140), Vector2(140,-84), Vector2(140,-28), Vector2(140,28), Vector2(140,84), Vector2(140,140),
+		Vector2(-84,-140), Vector2(-28,-140), Vector2(28,-140), Vector2(84,-140),
+		Vector2(-84,140), Vector2(-28,140), Vector2(28,140), Vector2(84,140),
+		Vector2(-140,-105), Vector2(140,-105), Vector2(-140,105), Vector2(140,105)
 	]
 	for i in range(building_count):
 		var p: Vector2 = plots[i % plots.size()]
