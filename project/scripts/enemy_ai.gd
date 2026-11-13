@@ -6,7 +6,7 @@ signal enemy_died(enemy)
 @export var max_health := 85.0
 @export var speed := 2.8
 @export var damage := 12.0
-@export var detection_range := 48.0
+@export var detection_range := 10.0
 @export var attack_range := 1.8
 @export var attack_cooldown := 1.25
 
@@ -17,6 +17,8 @@ var gravity := 18.0
 var attack_timer := 0.0
 var hit_flash := 0.0
 var gait_phase := 0.0
+var alerted := false
+var idle_phase := 0.0
 
 func _ready() -> void:
 	current_health = max_health
@@ -51,7 +53,16 @@ func _physics_process(delta: float) -> void:
 	var offset := target.global_position - global_position
 	offset.y = 0.0
 	var distance := offset.length()
-	if distance <= detection_range and distance > attack_range:
+	# Infected stay dormant until the player gets close or attacks one.
+	if distance <= detection_range:
+		alerted = true
+	if not alerted:
+		idle_phase += delta
+		velocity.x = move_toward(velocity.x, 0.0, speed * delta * 2.0)
+		velocity.z = move_toward(velocity.z, 0.0, speed * delta * 2.0)
+		move_and_slide()
+		return
+	if distance <= detection_range * 5.0 and distance > attack_range:
 		var direction := offset.normalized()
 		velocity.x = direction.x * speed
 		velocity.z = direction.z * speed
@@ -101,8 +112,6 @@ func _build_zombie_visual() -> void:
 	_add_zombie_part(root, "RightLeg", leg_mesh, Vector3(0.17, 0.38, 0), torn)
 	var eye := StandardMaterial3D.new()
 	eye.albedo_color = Color(0.9, 0.08, 0.025)
-	eye.emission_enabled = true
-	eye.emission = Color(0.9, 0.025, 0.01)
 	var eye_mesh := BoxMesh.new()
 	eye_mesh.size = Vector3(0.34, 0.07, 0.08)
 	_add_zombie_part(root, "Eyes", eye_mesh, Vector3(0, 1.66, -0.21), eye)
@@ -115,8 +124,12 @@ func _add_zombie_part(parent: Node3D, label: String, mesh: Mesh, at: Vector3, ma
 	visual.position = at
 	parent.add_child(visual)
 
+func alert_to_player() -> void:
+	alerted = true
+
 func take_damage(amount: float) -> void:
 	if is_dead: return
+	alerted = true
 	current_health = maxf(0.0,current_health-amount)
 	var visual := get_node_or_null("Visual")
 	if visual is MeshInstance3D:
