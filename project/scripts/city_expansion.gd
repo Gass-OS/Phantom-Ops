@@ -38,12 +38,12 @@ func _generate_world() -> void:
 
 func _build_city_life() -> void:
 	# Small outer-district landmarks: additions only; the existing building blocks stay intact.
-	_build_storefront("PHARMACY", Vector3(140, 0, 28), Color(0.10, 0.48, 0.30), "✚")
-	_build_storefront("MAGAZINE", Vector3(-140, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
-	_build_school(Vector3(140, 0, 84))
-	_build_mosque(Vector3(-140, 0, 84))
-	_build_park(Vector3(140, 0, -84))
-	_build_market(Vector3(-140, 0, -84))
+	_build_storefront("PHARMACY", Vector3(150, 0, 28), Color(0.10, 0.48, 0.30), "✚")
+	_build_storefront("MAGAZINE", Vector3(-150, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
+	_build_school(Vector3(150, 0, 84))
+	_build_mosque(Vector3(-150, 0, 84))
+	_build_park(Vector3(160, 0, -84))
+	_build_market(Vector3(-160, 0, -84))
 	print("PHANTOM OPS: pharmacy, newsstand, school, mosque, park and produce market added")
 
 func _label(parent: Node3D, caption: String, at: Vector3, color: Color) -> void:
