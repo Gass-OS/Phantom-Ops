@@ -65,7 +65,7 @@ func _draw() -> void:
 	var jump := Vector2(w - 270*k, h - 92*k)
 	var sprint := Vector2(w - 270*k, h - 285*k)
 	_button(fire, 82*k, Color(0.65,0.13,0.10,0.94 if fire_flash <= 0 else 1.0), k)
-	draw_string(f, Vector2(fire.x - 48*k, fire.y + 8*k), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 96*k, int(22*k), Color.WHITE)
+	draw_string(f, Vector2(fire.x - 48*k, fire.y + 8*k), "ATTACK", HORIZONTAL_ALIGNMENT_CENTER, 96*k, int(22*k), Color.WHITE)
 	_button(jump, 61*k, Color(0.12,0.34,0.53,0.94), k)
 	draw_string(f, Vector2(jump.x - 42*k, jump.y + 7*k), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, 84*k, int(17*k), Color.WHITE)
 	_button(sprint, 59*k, Color(0.12,0.42,0.30,0.94), k)
@@ -110,27 +110,34 @@ func _gui_input(e: InputEvent) -> void:
 
 func _start(id: int, p: Vector2, w: float, h: float, k: float) -> void:
 	if paused:
-		if absf(p.y - h*0.49) < 90*k: resume_pressed.emit()
-		elif absf(p.y - h*0.64) < 90*k: menu_pressed.emit()
+		if absf(p.y - h*0.49) < 90*k:
+			resume_pressed.emit()
+		elif absf(p.y - h*0.64) < 90*k:
+			menu_pressed.emit()
 		return
 	if p.x > w - 95*k and p.y < 100*k:
 		pause_pressed.emit()
+		return
+	var joy := Vector2(154*k, h - 190*k)
+	var fire := Vector2(w - 112*k, h - 190*k)
+	var jump := Vector2(w - 270*k, h - 92*k)
+	var sprint := Vector2(w - 270*k, h - 285*k)
+	# Test actual button hit circles first; this prevents overlap/ordering errors
+	# on narrow Android aspect ratios and guarantees ATTACK emits its signal.
+	if p.distance_to(fire) <= 100*k:
+		fire_flash = 0.18
+		fire_pressed.emit()
+		queue_redraw()
+	elif p.distance_to(jump) <= 78*k:
+		jump_pressed.emit()
+	elif p.distance_to(sprint) <= 76*k:
+		sprinting = true
+		sprint_changed.emit(true)
 	elif p.x < w*0.46 and p.y > h*0.52:
 		joy_id = id
-		var center := Vector2(154*k, h-190*k)
-		move_value = ((p-center)/(112*k)).limit_length(1.0)
+		move_value = ((p - joy) / (112*k)).limit_length(1.0)
 		move_changed.emit(move_value)
 		queue_redraw()
-	elif p.x > w-365*k and p.y > h-385*k:
-		if p.x > w-210*k and p.y > h-300*k:
-			fire_flash = 0.16
-			fire_pressed.emit()
-			queue_redraw()
-		elif p.y < h-205*k:
-			sprinting = true
-			sprint_changed.emit(true)
-		else:
-			jump_pressed.emit()
 	else:
 		look_id = id
 
