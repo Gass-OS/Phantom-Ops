@@ -97,7 +97,7 @@ func _build_city_grid() -> void:
 			# Four close-packed buildings per block, with varied heights and footprints.
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
-					var offset := Vector3(sx * 19.0, 0, sz * 19.0)
+					var offset := Vector3(sx * 9.2, 0, sz * 9.2)
 					var seed_value := (gx * 97 + gz * 31 + int(sx + 2) * 11 + int(sz + 2) * 7) & 0x7fffffff
 					_create_building(center + offset, seed_value)
 	# Continuous outer boulevard defines a readable city boundary.
