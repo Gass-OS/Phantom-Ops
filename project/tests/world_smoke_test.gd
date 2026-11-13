@@ -36,6 +36,40 @@ func _run_world_test() -> void:
 		quit(1)
 		return
 	print("WORLD_SMOKE_PASS: dense city, pedestrians and traffic instantiated")
+
+	var game := current_scene
+	var city := game.get_node_or_null("City")
+	if city == null:
+		push_error("CITY_LIFE_FAIL: City node missing")
+		quit(1)
+		return
+	for landmark in ["PharmacyLandmark", "MagazineLandmark", "DistrictSchool", "NeighborhoodMosque", "NeighborhoodPark", "FruitVegetableMarket"]:
+		if city.find_child(landmark, true, false) == null:
+			push_error("CITY_LIFE_FAIL: missing " + landmark)
+			quit(1)
+			return
+	if game.get_node_or_null("CityLifeVoice") == null:
+		push_error("CITY_VOICE_FAIL: ambient voice controller missing")
+		quit(1)
+		return
+	print("CITY_LIFE_PASS: all six landmarks and ambient voice controller present")
+
+	var player := game.get_node_or_null("Player")
+	if player == null:
+		push_error("EXIT_SMOKE_FAIL: player missing")
+		quit(1)
+		return
+	player.call("_on_menu")
+	await create_timer(1.0).timeout
+	if current_scene == null or current_scene.scene_file_path != "res://scenes/main_menu.tscn":
+		push_error("EXIT_SMOKE_FAIL: safe return to main menu failed")
+		quit(1)
+		return
+	if root.find_child("MobileHUDLayer", true, false) != null:
+		push_error("EXIT_SMOKE_FAIL: mobile HUD layer leaked after scene exit")
+		quit(1)
+		return
+	print("EXIT_SMOKE_PASS: game scene and mobile HUD cleanly unloaded")
 	quit(0)
 
 func _find_deploy_button(node: Node) -> Button:
