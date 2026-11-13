@@ -68,6 +68,7 @@ func _decorate_building(body: StaticBody3D) -> void:
     var height := dimensions.y
     var depth := dimensions.z
 
+    var is_district := body.name.begins_with("DistrictBuilding_")
     var floors := maxi(1, int(height / 3.2) - 1)
 
     for floor in range(floors):
