@@ -1,4 +1,4 @@
-extends Node3D
+extends CharacterBody3D
 class_name PhantomTrafficCar
 
 var route: Array[Vector3] = []
@@ -14,6 +14,16 @@ func configure(points: Array[Vector3], tint: Color, cruise_speed: float) -> void
 
 func _ready() -> void:
 	add_to_group("traffic")
+	collision_layer = 4
+	collision_mask = 1 | 2
+	safe_margin = 0.08
+	var vehicle_shape := BoxShape3D.new()
+	vehicle_shape.size = Vector3(2.05, 1.45, 4.15)
+	var vehicle_collision := CollisionShape3D.new()
+	vehicle_collision.name = "VehicleCollision"
+	vehicle_collision.shape = vehicle_shape
+	vehicle_collision.position.y = 0.85
+	add_child(vehicle_collision)
 	_build_vehicle()
 
 func _build_vehicle() -> void:
@@ -62,8 +72,9 @@ func _box(label: String, dimensions: Vector3, at: Vector3, material: Material) -
 	instance.position = at
 	add_child(instance)
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if route.size() < 2:
+		velocity = Vector3.ZERO
 		return
 	var destination := route[route_index]
 	var offset := destination - global_position
@@ -74,7 +85,9 @@ func _process(delta: float) -> void:
 		offset = destination - global_position
 		offset.y = 0.0
 	var direction := offset.normalized()
-	global_position += direction * speed * delta
+	velocity = direction * speed
+	velocity.y = 0.0
+	move_and_slide()
 	if direction.length_squared() > 0.01:
 		rotation.y = lerp_angle(rotation.y, atan2(-direction.x, -direction.z), delta * 3.5)
 	for wheel in wheel_nodes:
