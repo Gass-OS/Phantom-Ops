@@ -5,6 +5,22 @@ func _initialize() -> void:
 
 func _run_world_test() -> void:
 	# Exercise the real Android entry path: menu -> Deploy -> mission scene.
+	var intro_scene := load("res://scenes/phantom_intro.tscn") as PackedScene
+	if intro_scene == null:
+		push_error("INTRO_SMOKE_FAIL: branded intro scene could not load")
+		quit(1)
+		return
+	var intro := intro_scene.instantiate()
+	root.add_child(intro)
+	current_scene = intro
+	await process_frame
+	if intro.find_child("Briefing", true, false) == null:
+		push_error("INTRO_SMOKE_FAIL: briefing layout missing")
+		quit(1)
+		return
+	intro.call("_open_menu")
+	await process_frame
+	print("INTRO_SMOKE_PASS: Phantom Ops briefing transitions to menu")
 	var menu_scene := load("res://scenes/main_menu.tscn") as PackedScene
 	if menu_scene == null:
 		push_error("MENU_SMOKE_FAIL: main menu could not load")
@@ -72,6 +88,15 @@ func _run_world_test() -> void:
 		quit(1)
 		return
 	print("CITY_LIFE_PASS: all six landmarks and ambient voice controller present")
+	var civilians_named := 0
+	for citizen in get_nodes_in_group("civilian"):
+		if citizen.find_child("CitizenNameplate", true, false) != null:
+			civilians_named += 1
+	if civilians_named < 10:
+		push_error("CITIZEN_NAME_FAIL: expected visible nameplates on spawned citizens")
+		quit(1)
+		return
+	print("CITIZEN_NAME_PASS: ", civilians_named, " citizens have nameplates")
 
 	var player := game.get_node_or_null("Player")
 	if player == null:
