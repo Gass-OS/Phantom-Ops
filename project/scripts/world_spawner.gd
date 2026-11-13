@@ -15,6 +15,9 @@ func _spawn_initial():
         var c = CitizenScript.new()
         c.is_female = (i % 2 == 1)
         c.variant = i
+        c.spawn_near_center = true
+        c.spawn_center = player.global_position if is_instance_valid(player) else Vector3.ZERO
+        c.spawn_radius = 42.0 + float(i % 4) * 5.0
         get_parent().add_child(c)
     for i in range(3):
         _spawn_zombie()
