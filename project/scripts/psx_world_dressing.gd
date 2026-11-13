@@ -18,7 +18,7 @@ const BATTERY := "res://assets/psx/items/battery_mp_1.glb"
 
 const LAMP := "res://assets/psx/lighting/lamp_1_on.glb"
 
-const MAX_BUILDINGS := 30
+const MAX_BUILDINGS := 100
 
 var rng := RandomNumberGenerator.new()
 
@@ -51,7 +51,7 @@ func _dress_world() -> void:
 
     _dress_street_lamps(world)
 
-    print("PHANTOM OPS: PSX dressing complete; buildings decorated: ", decorated)
+    print("PHANTOM OPS: PSX dressing complete; buildings decorated: ", decorated, " / ", buildings.size())
 
 
 func _decorate_building(body: StaticBody3D) -> void:
@@ -68,11 +68,10 @@ func _decorate_building(body: StaticBody3D) -> void:
     var height := dimensions.y
     var depth := dimensions.z
 
-    var is_district := body.name.begins_with("DistrictBuilding_")
-    var floors := 1 if is_district else 2
+    var floors := maxi(1, int(height / 3.2) - 1)
 
     for floor in range(floors):
-        var y := 3.0 + float(floor) * 3.6
+        var y := 3.0 + float(floor) * 3.2
 
         if y > height - 0.6:
             continue
@@ -88,7 +87,7 @@ func _decorate_building(body: StaticBody3D) -> void:
                 body,
                 path,
                 "PSX_Window",
-                Vector3(x, y, -depth * 0.515),
+                Vector3(x, y, -depth * 0.5 - 0.18),
                 Vector3(1.65, 1.65, 0.20)
             )
 
@@ -96,11 +95,11 @@ func _decorate_building(body: StaticBody3D) -> void:
         body,
         DOOR,
         "PSX_EntranceDoor",
-        Vector3(0.0, 1.4, -depth * 0.522),
+        Vector3(0.0, 1.4, -depth * 0.5 - 0.20),
         Vector3(1.7, 2.7, 0.20)
     )
 
-    var front_z := -depth * 0.60
+    var front_z := -depth * 0.5 - 1.0
     var left_x := -width * 0.62
     var right_x := width * 0.62
 
