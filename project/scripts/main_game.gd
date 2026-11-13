@@ -4,6 +4,7 @@ const WeatherScript = preload("res://scripts/weather.gd")
 const SpawnerScript = preload("res://scripts/world_spawner.gd")
 const ExpansionScript = preload("res://scripts/city_expansion.gd")
 const MissionScript = preload("res://scripts/mission_director.gd")
+const DressingScript = preload("res://scripts/psx_world_dressing.gd")
 
 var player: CharacterBody3D
 var city: Node3D
@@ -30,6 +31,12 @@ func _ready() -> void:
         var expansion = ExpansionScript.new()
         expansion.name = "CityExpansion"
         city.add_child(expansion)
+
+    # Run after the expansion has generated its buildings and street props.
+    if city.get_node_or_null("PSXWorldDressing") == null:
+        var dressing = DressingScript.new()
+        dressing.name = "PSXWorldDressing"
+        city.add_child(dressing)
 
     if get_node_or_null("MissionDirector") == null:
         var missions = MissionScript.new()
