@@ -26,6 +26,9 @@ var hijab_colors = [Color(0.95, 0.95, 0.95), Color(0.85, 0.40, 0.55), Color(0.20
 
 func _ready() -> void:
 	add_to_group("civilian")
+	collision_layer = 2
+	collision_mask = 1 | 2 | 4
+	safe_margin = 0.06
 	floor_snap_length = 0.5
 	floor_stop_on_slope = true
 	if spawn_near_center:
