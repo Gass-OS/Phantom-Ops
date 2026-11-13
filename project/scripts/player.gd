@@ -170,12 +170,11 @@ func _on_menu() -> void:
 	set_physics_process(false)
 	get_tree().paused = false
 	# Stop transient effects and detach the root-level HUD before unloading the 3D world.
-	for node in get_tree().get_nodes_in_group("weather"):
-		if is_instance_valid(node):
-			for effect in node.find_children("*", "GPUParticles3D", true, false):
-				effect.emitting = false
-			for effect in node.find_children("*", "CPUParticles3D", true, false):
-				effect.emitting = false
+	for effect in get_tree().root.find_children("*", "GPUParticles3D", true, false):
+		effect.emitting = false
+	for effect in get_tree().root.find_children("*", "CPUParticles3D", true, false):
+		effect.emitting = false
+	DisplayServer.tts_stop()
 	if is_instance_valid(mobile_hud) and mobile_hud.get_parent() != null:
 		mobile_hud.get_parent().queue_free()
 	await get_tree().process_frame
