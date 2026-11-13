@@ -122,15 +122,39 @@ func _on_mobile_look(value: Vector2) -> void:
 func _on_mobile_jump() -> void:
 	if is_on_floor(): velocity.y = jump_velocity
 func _on_mobile_fire() -> void:
-	if fire_cooldown > 0.0: return
-	fire_cooldown = 0.22
-	var query := PhysicsRayQueryParameters3D.create(camera.global_position, camera.global_position - camera.global_transform.basis.z * 95.0)
+	if fire_cooldown > 0.0 or is_dead or is_paused:
+		return
+	fire_cooldown = 0.32
+	var origin := camera.global_position
+	var forward := -camera.global_transform.basis.z.normalized()
+	var best_target: Node3D = null
+	var best_distance := 42.0
+	# Aim assist makes the touch attack reliable on small phone screens.
+	for candidate in get_tree().get_nodes_in_group("hostiles"):
+		if not is_instance_valid(candidate) or not candidate.has_method("take_damage"):
+			continue
+		var offset: Vector3 = candidate.global_position + Vector3.UP * 0.8 - origin
+		var distance := offset.length()
+		if distance > best_distance or distance < 0.1:
+			continue
+		if forward.dot(offset.normalized()) < 0.82:
+			continue
+		best_target = candidate
+		best_distance = distance
+	if best_target != null:
+		best_target.take_damage(40.0)
+		for enemy in get_tree().get_nodes_in_group("zombie"):
+			if is_instance_valid(enemy) and enemy.has_method("alert_to_player") and enemy.global_position.distance_to(global_position) < 55.0:
+				enemy.alert_to_player()
+		return
+	# Keep a direct ray fallback for any future damageable target types.
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * 42.0)
 	query.exclude = [self]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		var target = hit.get("collider")
 		if target != null and target.has_method("take_damage"):
-			target.take_damage(34.0)
+			target.take_damage(40.0)
 func _on_sprint(value: bool) -> void: mobile_sprinting = value
 func _on_pause() -> void:
 	is_paused = true
@@ -141,10 +165,28 @@ func _on_resume() -> void:
 	set_physics_process(true)
 	mobile_hud.set_paused(false)
 func _on_menu() -> void:
+	if is_paused == false:
+		is_paused = true
+	set_physics_process(false)
+	get_tree().paused = false
+	# Stop transient effects and detach the root-level HUD before unloading the 3D world.
+	for node in get_tree().get_nodes_in_group("weather"):
+		if is_instance_valid(node):
+			for effect in node.find_children("*", "GPUParticles3D", true, false):
+				effect.emitting = false
+			for effect in node.find_children("*", "CPUParticles3D", true, false):
+				effect.emitting = false
 	if is_instance_valid(mobile_hud) and mobile_hud.get_parent() != null:
 		mobile_hud.get_parent().queue_free()
-	get_tree().paused = false
+	await get_tree().process_frame
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if is_paused:
+			_on_menu()
+		else:
+			_on_pause()
 
 func _physics_process(delta: float) -> void:
 	if is_dead or is_paused: return
