@@ -31,6 +31,9 @@ func _ready() -> void:
 	_build_city_blocks()
 	_build_street_lighting()
 	_build_vegetation()
+        var psx_dressing = load("res://scripts/psx_world_dressing.gd").new()
+        psx_dressing.name = "PSXWorldDressing"
+        add_child(psx_dressing)
 	call_deferred("_spawn_hostiles")
 	_build_weather()
 	print("PHANTOM OPS: world generation complete")
