@@ -381,7 +381,7 @@ func _spawn_residents() -> void:
 		person.spawn_radius = 150.0
 		person.axis = i % 2
 		var road_index := posmod(i * 3 + int(i / 5), district_radius * 2 + 1) - district_radius
-		var side_offset := 10.8 if (i / 2) % 2 == 0 else -10.8
+		var side_offset := 9.5 if (i / 2) % 2 == 0 else -9.5
 		person.lane = float(road_index) * block_spacing + side_offset
 		add_child(person)
 		person.position.y = 0.92
