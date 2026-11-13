@@ -185,7 +185,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		var difference := target - global_position
 		difference.y = 0.0
-		if wait_time > 0.0:
+		if action_state == "checking phone" or action_state == "waiting":
+			direction = Vector3.ZERO
+		elif wait_time > 0.0:
 			wait_time -= delta
 		elif difference.length() < 1.2:
 			wait_time = randf_range(1.0, 3.5)
