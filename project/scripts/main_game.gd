@@ -70,7 +70,7 @@ func _safe_return_to_menu() -> void:
 		return
 	_leaving_game = true
 	var tree := get_tree()
-	var old_scene := tree.current_scene
+	var old_scene := tree.current_scene as Node3D
 	var menu_pack := load("res://scenes/main_menu.tscn") as PackedScene
 	if menu_pack == null:
 		push_error("PHANTOM OPS: unable to load main menu during safe exit")
