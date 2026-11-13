@@ -102,20 +102,20 @@ func _upgrade_building(body: StaticBody3D) -> bool:
             for col in [-1.0,0.0,1.0]:
                 if col == 0.0 and w < 12.5:
                     continue
-                var x := col*w*0.29
+                var x: float = float(col)*w*0.29
                 _window(root,x,cy,face,direction,window_width,window_height)
                 if floor == 0 and col != 0.0 and (abs(body.name.hash())%3==0):
                     _balcony(root,x,cy-1.03,face,direction,window_width+0.48)
     
     # Side elevations get real window frames too, not just flat dark rectangles.
     for side in [-1.0,1.0]:
-        var side_x := side*(w*0.5+0.16)
+        var side_x: float = float(side)*(w*0.5+0.16)
         for floor in range(floors):
             var cy := 2.85+float(floor)*3.15
             if cy+0.86 > h:
                 continue
             for col in [-1.0,0.0,1.0]:
-                var z := col*d*0.27
+                var z: float = float(col)*d*0.27
                 _box(root,"SideWindowReveal",Vector3(0.20,1.95,1.72),Vector3(side_x,cy,z),dark_trim)
                 _box(root,"SideWindowGlass",Vector3(0.075,1.58,1.34),Vector3(side*(w*0.5+0.275),cy,z),glass)
                 _box(root,"SideWindowCrossbar",Vector3(0.08,0.07,1.32),Vector3(side*(w*0.5+0.33),cy,z),metal)
