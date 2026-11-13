@@ -165,20 +165,8 @@ func _on_resume() -> void:
 	set_physics_process(true)
 	mobile_hud.set_paused(false)
 func _on_menu() -> void:
-	if is_paused == false:
-		is_paused = true
-	set_physics_process(false)
-	get_tree().paused = false
-	# Stop transient effects and detach the root-level HUD before unloading the 3D world.
-	for effect in get_tree().root.find_children("*", "GPUParticles3D", true, false):
-		effect.emitting = false
-	for effect in get_tree().root.find_children("*", "CPUParticles3D", true, false):
-		effect.emitting = false
-	DisplayServer.tts_stop()
-	if is_instance_valid(mobile_hud) and mobile_hud.get_parent() != null:
-		mobile_hud.get_parent().queue_free()
-	await get_tree().process_frame
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	if is_instance_valid(get_parent()) and get_parent().has_method("_safe_return_to_menu"):
+		get_parent().call_deferred("_safe_return_to_menu")
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
