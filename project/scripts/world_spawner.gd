@@ -11,7 +11,7 @@ func _ready():
     call_deferred("_spawn_initial")
 
 func _spawn_initial():
-    for i in range(16):
+    for i in range(28):
         var c = CitizenScript.new()
         c.is_female = (i % 2 == 1)
         c.variant = i
