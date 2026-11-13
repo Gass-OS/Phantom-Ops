@@ -134,12 +134,13 @@ func _build_ground_and_roads() -> void:
 func _build_city_blocks() -> void:
 	# Keep the original 24 buildings, but move this legacy ring beyond the 56m
 	# expansion grid so none of their footprints intrude into its carriageways.
+	# 24 original buildings positioned in safe outer blocks between avenues.
 	var plots := [
-		Vector2(-140,-140), Vector2(-140,-84), Vector2(-140,-28), Vector2(-140,28), Vector2(-140,84), Vector2(-140,140),
-		Vector2(140,-140), Vector2(140,-84), Vector2(140,-28), Vector2(140,28), Vector2(140,84), Vector2(140,140),
-		Vector2(-84,-140), Vector2(-28,-140), Vector2(28,-140), Vector2(84,-140),
-		Vector2(-84,140), Vector2(-28,140), Vector2(28,140), Vector2(84,140),
-		Vector2(-140,-105), Vector2(140,-105), Vector2(-140,105), Vector2(140,105)
+		Vector2(-196,-196), Vector2(-196,-140), Vector2(-196,-84), Vector2(-196,84), Vector2(-196,140), Vector2(-196,196),
+		Vector2(196,-196), Vector2(196,-140), Vector2(196,-84), Vector2(196,84), Vector2(196,140), Vector2(196,196),
+		Vector2(-140,-196), Vector2(-84,-196), Vector2(84,-196), Vector2(140,-196),
+		Vector2(-140,196), Vector2(-84,196), Vector2(84,196), Vector2(140,196),
+		Vector2(-84,-140), Vector2(-84,140), Vector2(84,-140), Vector2(84,140)
 	]
 	for i in range(building_count):
 		var p: Vector2 = plots[i % plots.size()]
