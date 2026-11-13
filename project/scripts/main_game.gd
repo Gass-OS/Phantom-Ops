@@ -26,6 +26,16 @@ func _ready() -> void:
     _ensure_buildings()
     _ensure_lighting()
 
+    if city.get_node_or_null("CityExpansion") == null:
+        var expansion = ExpansionScript.new()
+        expansion.name = "CityExpansion"
+        city.add_child(expansion)
+
+    if get_node_or_null("MissionDirector") == null:
+        var missions = MissionScript.new()
+        missions.name = "MissionDirector"
+        add_child(missions)
+
     player.floor_snap_length = 0.6
     player.up_direction = Vector3.UP
     player.velocity = Vector3.ZERO
