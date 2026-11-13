@@ -156,7 +156,7 @@ func _create_building(index: int, p: Vector2) -> void:
 	# Two floors of visible framed windows on the front and rear.
 	for floor in range(2):
 		for side in [-1.0,1.0]:
-			var wx := side*sx*0.27
+			var wx: float = float(side)*sx*0.27
 			var wy := 3.0 + floor*3.6
 			_box(body,"WindowFrame",Vector3(1.65,1.65,0.18),Vector3(wx,wy,-sz*0.505),window_frame)
 			_box(body,"WindowGlass",Vector3(1.28,1.28,0.08),Vector3(wx,wy,-sz*0.515),window_glass)
