@@ -43,6 +43,8 @@ func _upgrade_city() -> void:
     var upgraded := 0
     var skipped := 0
     for item in world.find_children("*","StaticBody3D",true,false):
+        if upgraded >= 12:
+            break
         var body := item as StaticBody3D
         if not (body.name.begins_with("Building_") or body.name.begins_with("DistrictBuilding_")):
             continue
@@ -172,7 +174,7 @@ func _add_city_props(world: Node3D) -> void:
         var body := item as StaticBody3D
         if not (body.name.begins_with("Building_") or body.name.begins_with("DistrictBuilding_")):
             continue
-        if index >= 18:
+        if index >= 8:
             break
         var side := -1.0 if index%2==0 else 1.0
         var planter := Node3D.new()
