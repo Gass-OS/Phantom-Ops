@@ -41,9 +41,13 @@ func _build_city_life() -> void:
 	_build_storefront("PHARMACY", Vector3(28, 0, 28), Color(0.10, 0.48, 0.30), "✚")
 	_build_storefront("MAGAZINE", Vector3(-28, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
 	_build_school(Vector3(84, 0, 28))
+	get_node("DistrictSchool").scale = Vector3(0.78, 0.78, 0.78)
 	_build_mosque(Vector3(-84, 0, 28))
+	get_node("NeighborhoodMosque").scale = Vector3(0.82, 0.82, 0.82)
 	_build_park(Vector3(28, 0, -28))
+	get_node("NeighborhoodPark").scale = Vector3(0.52, 0.52, 0.52)
 	_build_market(Vector3(-28, 0, -28))
+	get_node("FruitVegetableMarket").scale = Vector3(0.78, 0.78, 0.78)
 	print("PHANTOM OPS: pharmacy, newsstand, school, mosque, park and produce market added")
 
 func _label(parent: Node3D, caption: String, at: Vector3, color: Color) -> void:
@@ -267,7 +271,7 @@ func _build_city_grid() -> void:
 			var center := Vector3((float(gx) + 0.5) * block_spacing, 0, (float(gz) + 0.5) * block_spacing)
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
-					var offset := Vector3(sx * 9.2, 0, sz * 9.2)
+					var offset := Vector3(sx * 18.0, 0, sz * 18.0)
 					var seed_value := (gx * 97 + gz * 31 + int(sx + 2) * 11 + int(sz + 2) * 7) & 0x7fffffff
 					_create_building(center + offset, seed_value)
 			# Yield after each city block: keeps frame time bounded during scene entry.
