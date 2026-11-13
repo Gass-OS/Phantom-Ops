@@ -37,6 +37,25 @@ func _run_world_test() -> void:
 		return
 	print("WORLD_SMOKE_PASS: dense city, pedestrians and traffic instantiated")
 
+	# Regression guard: building centers must not sit in any 56m carriageway.
+	for building in current_scene.find_children("*", "StaticBody3D", true, false):
+		var building_name := str(building.name)
+		if not building_name.begins_with("DistrictBuilding_") and not building_name.begins_with("Building_"):
+			continue
+		var pos: Vector3 = building.global_position
+		var road_dx := absf(pos.x - roundf(pos.x / 56.0) * 56.0)
+		var road_dz := absf(pos.z - roundf(pos.z / 56.0) * 56.0)
+		if road_dx < 15.0 or road_dz < 15.0:
+			push_error("ROAD_CLEARANCE_FAIL: " + building_name + " is inside a road corridor at " + str(pos))
+			quit(1)
+			return
+	print("ROAD_CLEARANCE_PASS: building footprints are positioned clear of road corridors")
+	if not bool(ProjectSettings.get_setting("audio/general/text_to_speech", false)):
+		push_error("CITY_VOICE_FAIL: project TTS support is disabled")
+		quit(1)
+		return
+	print("CITY_TTS_SETTING_PASS: Godot text-to-speech enabled")
+
 	var game := current_scene
 	var city := game.get_node_or_null("City")
 	if city == null:
