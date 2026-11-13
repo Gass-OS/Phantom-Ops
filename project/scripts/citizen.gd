@@ -4,6 +4,7 @@ var is_female: bool = false
 var variant: int = 0
 
 var axis: int = 0
+var city_extent: float = 220.0
 var lane: float = 0.0
 var target: Vector3 = Vector3.ZERO
 var wait_time: float = 0.0
@@ -35,10 +36,10 @@ func _ready():
     add_to_group("civilian")
 
     axis = randi() % 2
-    lane = [-45.0, 0.0, 45.0][randi() % 3] + [-3.2, 3.2][randi() % 2]
+    lane = [-160.0, -80.0, 0.0, 80.0, 160.0][randi() % 5] + [-3.2, 3.2][randi() % 2]
     floor_snap_length = 0.42
     floor_stop_on_slope = true
-    position = _lane_point(randf_range(-100.0, 100.0))
+    position = _lane_point(randf_range(-city_extent, city_extent))
     target = _lane_point(randf_range(-100.0, 100.0))
 
     var col = CollisionShape3D.new()
@@ -118,8 +119,8 @@ func _build_model():
     # Arms
     arm_l = _make_arm(Vector3(-0.30, 0.4, 0), cloth, skin)
     arm_r = _make_arm(Vector3(0.30, 0.4, 0), cloth, skin)
-    leg_l = _make_leg(Vector3(-0.14, -0.65, 0), cloth)
-    leg_r = _make_leg(Vector3(0.14, -0.65, 0), cloth)
+    leg_l = _make_leg(Vector3(-0.14, -0.15, 0), cloth)
+    leg_r = _make_leg(Vector3(0.14, -0.15, 0), cloth)
 
 func _make_leg(pos: Vector3, cloth: Color) -> Node3D:
     var pivot = Node3D.new()
