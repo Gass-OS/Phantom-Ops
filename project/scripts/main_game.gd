@@ -2,6 +2,8 @@ extends Node3D
 
 const WeatherScript = preload("res://scripts/weather.gd")
 const SpawnerScript = preload("res://scripts/world_spawner.gd")
+const ExpansionScript = preload("res://scripts/city_expansion.gd")
+const MissionScript = preload("res://scripts/mission_director.gd")
 
 var player: CharacterBody3D
 var city: Node3D
