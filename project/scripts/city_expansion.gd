@@ -4,10 +4,10 @@ class_name PhantomCityExpansion
 const TrafficCar = preload("res://scripts/traffic_car.gd")
 const Citizen = preload("res://scripts/citizen.gd")
 
-@export_range(2, 5) var district_radius := 3
+@export_range(2, 5) var district_radius := 2
 @export var block_spacing := 56.0
-@export var traffic_count := 18
-@export var extra_citizens := 24
+@export var traffic_count := 10
+@export var extra_citizens := 12
 
 var rng := RandomNumberGenerator.new()
 var wall_mats: Array[StandardMaterial3D] = []
@@ -20,12 +20,19 @@ var line_mat: StandardMaterial3D
 func _ready() -> void:
 	rng.seed = 13112026
 	_make_materials()
+	call_deferred("_generate_world")
+
+func _generate_world() -> void:
+	# Build in small frame-sized batches so Android never stalls on one huge _ready().
 	_expand_ground()
-	_build_city_grid()
+	await get_tree().process_frame
+	await _build_city_grid()
+	await get_tree().process_frame
 	_build_traffic()
 	_build_street_props()
+	await get_tree().process_frame
 	_spawn_residents()
-	print("PHANTOM OPS: dense city generated; buildings, pedestrians and traffic active")
+	print("PHANTOM OPS: city generated progressively; buildings, pedestrians and traffic active")
 
 func _make_materials() -> void:
 	for color in [
@@ -94,12 +101,13 @@ func _build_city_grid() -> void:
 	for gx in range(-district_radius, district_radius):
 		for gz in range(-district_radius, district_radius):
 			var center := Vector3((float(gx) + 0.5) * block_spacing, 0, (float(gz) + 0.5) * block_spacing)
-			# Four close-packed buildings per block, with varied heights and footprints.
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
 					var offset := Vector3(sx * 9.2, 0, sz * 9.2)
 					var seed_value := (gx * 97 + gz * 31 + int(sx + 2) * 11 + int(sz + 2) * 7) & 0x7fffffff
 					_create_building(center + offset, seed_value)
+			# Yield after each city block: keeps frame time bounded during scene entry.
+			await get_tree().process_frame
 	# Continuous outer boulevard defines a readable city boundary.
 	_add_box("OuterBoulevardNorth", Vector3(680, 0.08, 14), Vector3(0, 0.02, -extent - 16), road_mat)
 	_add_box("OuterBoulevardSouth", Vector3(680, 0.08, 14), Vector3(0, 0.02, extent + 16), road_mat)
