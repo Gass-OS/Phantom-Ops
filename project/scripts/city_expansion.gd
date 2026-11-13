@@ -112,6 +112,7 @@ func _create_building(at: Vector3, seed_value: int) -> void:
 	var depth := rng.randf_range(14.0, 18.5)
 	var body := StaticBody3D.new()
 	body.name = "DistrictBuilding_%d" % seed_value
+	body.add_to_group("city_building")
 	body.position = at
 	add_child(body)
 	var wall := wall_mats[seed_value % wall_mats.size()]
