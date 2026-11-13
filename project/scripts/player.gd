@@ -17,13 +17,22 @@ var mobile_sprinting := false
 var mobile_hud
 var is_paused := false
 var fire_cooldown := 0.0
+var gait_phase := 0.0
+var visual_left_leg: Node3D
+var visual_right_leg: Node3D
+var visual_left_arm: Node3D
+var visual_right_arm: Node3D
 @onready var camera: Camera3D = $Head/Camera3D
 
 func _ready() -> void:
 	add_to_group("player")
 	current_health = max_health
+	floor_snap_length = 0.45
+	floor_stop_on_slope = true
+	floor_max_angle = deg_to_rad(48.0)
+	safe_margin = 0.035
 	_build_player_visual()
-	camera.position = Vector3(0, 2.55, 6.2)
+	camera.position = Vector3(0, 1.8, 5.0)
 	camera.rotation = Vector3(deg_to_rad(-13.0), 0.0, 0.0)
 	camera.current = true
 	_create_mobile_hud()
@@ -57,6 +66,11 @@ func _build_player_visual() -> void:
 	var visor := StandardMaterial3D.new()
 	visor.albedo_color = Color(0.035, 0.07, 0.085)
 	_add_box(root, "HelmetVisor", Vector3(0.40, 0.10, 0.29), Vector3(0, 1.76, -0.045), visor)
+	root.position.y = -0.9
+	visual_left_leg = root.get_node_or_null("LeftLeg")
+	visual_right_leg = root.get_node_or_null("RightLeg")
+	visual_left_arm = root.get_node_or_null("LeftArm")
+	visual_right_arm = root.get_node_or_null("RightArm")
 
 func _add_capsule(parent: Node3D, node_name: String, radius: float, height: float, pos: Vector3, mat: Material) -> void:
 	var mesh := CapsuleMesh.new()
@@ -132,7 +146,11 @@ func _on_menu() -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead or is_paused: return
 	fire_cooldown = maxf(0.0, fire_cooldown-delta)
-	if not is_on_floor(): velocity.y -= gravity * delta
+	if not is_on_floor():
+		velocity.y = maxf(velocity.y - gravity * delta, -32.0)
+	else:
+		if velocity.y < 0.0:
+			velocity.y = 0.0
 	var input_dir := mobile_move
 	if OS.get_name() not in ["Android","iOS"]:
 		input_dir = Input.get_vector("ui_left","ui_right","ui_up","ui_down")
@@ -143,6 +161,14 @@ func _physics_process(delta: float) -> void:
 	if OS.get_name() not in ["Android","iOS"] and Input.is_action_just_pressed("ui_select") and is_on_floor():
 		velocity.y = jump_velocity
 	move_and_slide()
+	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if planar_speed > 0.15:
+		gait_phase += delta * (8.0 if mobile_sprinting else 5.8)
+	var gait := sin(gait_phase) * clampf(planar_speed / sprint_speed, 0.0, 1.0) * 0.52
+	if is_instance_valid(visual_left_leg): visual_left_leg.rotation.x = lerpf(visual_left_leg.rotation.x, gait, delta * 12.0)
+	if is_instance_valid(visual_right_leg): visual_right_leg.rotation.x = lerpf(visual_right_leg.rotation.x, -gait, delta * 12.0)
+	if is_instance_valid(visual_left_arm): visual_left_arm.rotation.x = lerpf(visual_left_arm.rotation.x, -gait * 0.65, delta * 10.0)
+	if is_instance_valid(visual_right_arm): visual_right_arm.rotation.x = lerpf(visual_right_arm.rotation.x, gait * 0.65, delta * 10.0)
 
 func take_damage(amount: float) -> void:
 	if is_dead: return
