@@ -24,6 +24,16 @@ func _ready() -> void:
 	floor_stop_on_slope = true
 	add_to_group("hostiles")
 	add_to_group("zombie")
+	if not is_instance_valid(target):
+		target = get_tree().get_first_node_in_group("player")
+	if get_node_or_null("CollisionShape3D") == null:
+		var body_shape := CapsuleShape3D.new()
+		body_shape.radius = 0.4
+		body_shape.height = 1.8
+		var body_collision := CollisionShape3D.new()
+		body_collision.name = "CollisionShape3D"
+		body_collision.shape = body_shape
+		add_child(body_collision)
 	_build_zombie_visual()
 
 func _physics_process(delta: float) -> void:
