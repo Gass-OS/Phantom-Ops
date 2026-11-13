@@ -44,7 +44,7 @@ func _upgrade_city() -> void:
     var skipped := 0
     for item in world.find_children("*","StaticBody3D",true,false):
         var body := item as StaticBody3D
-        if not body.name.begins_with("Building_"):
+        if not (body.name.begins_with("Building_") or body.name.begins_with("DistrictBuilding_")):
             continue
         if body.get_node_or_null("NativeArchitectureV2") != null:
             continue
