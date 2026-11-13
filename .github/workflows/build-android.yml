@@ -110,6 +110,12 @@ jobs:
             --path project \
             --quit
 
+      - name: Runtime smoke test - city population and traffic
+        run: |
+          godot --headless \
+            --path project \
+            --script res://tests/world_smoke_test.gd
+
       - name: Export Android APK
         run: |
           mkdir -p build
