@@ -13,6 +13,7 @@ func configure(points: Array[Vector3], tint: Color, cruise_speed: float) -> void
 	speed = cruise_speed
 
 func _ready() -> void:
+	add_to_group("traffic")
 	_build_vehicle()
 
 func _build_vehicle() -> void:
