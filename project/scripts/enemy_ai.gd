@@ -25,7 +25,7 @@ func _ready() -> void:
 	add_to_group("hostiles")
 	add_to_group("zombie")
 	if not is_instance_valid(target):
-		target = get_tree().get_first_node_in_group("player")
+		target = get_tree().get_first_node_in_group("player") as Node3D
 	if get_node_or_null("CollisionShape3D") == null:
 		var body_shape := CapsuleShape3D.new()
 		body_shape.radius = 0.4
