@@ -138,7 +138,7 @@ func _physics_process(delta: float) -> void:
 		flee_timer = 0.4
 		threat_dir = Vector3.ZERO
 		for zombie in get_tree().get_nodes_in_group("zombie"):
-			var away := global_position - zombie.global_position
+			var away: Vector3 = global_position - (zombie as Node3D).global_position
 			away.y = 0.0
 			if away.length() < 14.0:
 				threat_dir += away.normalized()
