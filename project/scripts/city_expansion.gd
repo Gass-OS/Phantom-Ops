@@ -57,12 +57,17 @@ func _label(parent: Node3D, caption: String, at: Vector3, color: Color) -> void:
 	label.outline_size = 8
 	parent.add_child(label)
 
-func _prop_box(parent: Node3D, caption: String, size: Vector3, at: Vector3, color: Color) -> MeshInstance3D:
+func _prop_box(parent: Node3D, caption: String, size: Vector3, at: Vector3, surface: Variant) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.88
+	var material: Material
+	if surface is Color:
+		var color_material := StandardMaterial3D.new()
+		color_material.albedo_color = surface
+		color_material.roughness = 0.88
+		material = color_material
+	else:
+		material = surface as Material
 	mesh.material = material
 	var item := MeshInstance3D.new()
 	item.name = caption
