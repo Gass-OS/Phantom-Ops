@@ -35,7 +35,7 @@ func _spawn_citizen(index: int) -> void:
 	var base_road := roundi((player.global_position.z if citizen.axis == 0 else player.global_position.x) / 56.0)
 	var road_offset := posmod(int(index / 2), 5) - 2
 	var road_index := clampi(base_road + road_offset, -3, 3)
-	citizen.lane = float(road_index) * 56.0 + (10.8 if index % 4 < 2 else -10.8)
+	citizen.lane = float(road_index) * 56.0 + (9.5 if index % 4 < 2 else -9.5)
 	get_parent().add_child(citizen)
 
 func _process(delta: float) -> void:
