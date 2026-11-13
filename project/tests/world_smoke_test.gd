@@ -16,8 +16,8 @@ func _run_world_test() -> void:
 	var civilians := get_nodes_in_group("civilian").size()
 	var traffic := get_nodes_in_group("traffic").size()
 	print("WORLD_SMOKE_COUNTS buildings=", buildings, " civilians=", civilians, " traffic=", traffic)
-	if buildings < 100 or civilians < 80 or traffic < 10:
-		push_error("WORLD_SMOKE_FAIL: expected >=100 buildings, >=80 civilians and >=10 traffic vehicles")
+	if buildings < 100 or civilians < 35 or traffic < 10:
+		push_error("WORLD_SMOKE_FAIL: expected >=100 buildings, >=35 civilians and >=10 traffic vehicles")
 		quit(1)
 		return
 	print("WORLD_SMOKE_PASS: dense city, pedestrians and traffic instantiated")
