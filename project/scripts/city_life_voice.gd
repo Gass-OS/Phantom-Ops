@@ -5,6 +5,7 @@ extends Node
 @export var maximum_interval := 30.0
 
 var timer := 2.5
+var prayer_timer := 75.0
 var voice_id := ""
 var voice_locale := "en"
 
@@ -31,6 +32,10 @@ func _ready() -> void:
 	timer = 2.5
 
 func _process(delta: float) -> void:
+	prayer_timer -= delta
+	if prayer_timer <= 0.0 and not voice_id.is_empty() and not DisplayServer.tts_is_speaking():
+		DisplayServer.tts_speak("تذكير لطيف: حان وقت الصلاة، نسأل الله لكم السكينة والسلام.", voice_id, 88, 1.0, 0.92, 1, true)
+		prayer_timer = 300.0
 	if not enabled or voice_id.is_empty():
 		return
 	timer -= delta
@@ -54,7 +59,9 @@ func _process(delta: float) -> void:
 				"السلام عليكم، مرحبا بيكم في الحومة.",
 				"الغلة والخضرة طازجة اليوم.",
 				"الصيدلية محلولة.",
-				"بالكم، كرهبة جاية."
+				"بالكم، كرهبة جاية.",
+				"السلام عليكم، ربي يحفظكم.",
+				"تذكير لطيف: لا تنسوا الصلاة، ربي يتقبل."
 			]
 		_:
 			phrases = [
