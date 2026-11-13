@@ -2,7 +2,10 @@ config_version=5
 
 [application]
 config/name="Phantom Ops"
-run/main_scene="res://scenes/main_menu.tscn"
+run/main_scene="res://scenes/phantom_intro.tscn"
+boot_splash/image="res://assets/phantom_ops_logo.svg"
+boot_splash/fullsize=true
+boot_splash/use_filter=true
 config/features=PackedStringArray("4.2", "Mobile")
 
 [autoload]
