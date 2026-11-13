@@ -22,7 +22,7 @@ func reset_game():
 
 func random_road_point() -> Vector3:
     var lines = [-160.0, -80.0, 0.0, 80.0, 160.0]
-    var line = lines[randi() % 3]
+    var line = lines[randi() % lines.size()]
     var along = randf_range(-220.0, 220.0)
     var p = Vector3(line + randf_range(-3.2, 3.2), 0.9, along)
     if randi() % 2 == 0:
