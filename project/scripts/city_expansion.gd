@@ -38,16 +38,12 @@ func _generate_world() -> void:
 
 func _build_city_life() -> void:
 	# Small outer-district landmarks: additions only; the existing building blocks stay intact.
-	_build_storefront("PHARMACY", Vector3(28, 0, 28), Color(0.10, 0.48, 0.30), "✚")
-	_build_storefront("MAGAZINE", Vector3(-28, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
-	_build_school(Vector3(84, 0, 28))
-	get_node("DistrictSchool").scale = Vector3(0.78, 0.78, 0.78)
-	_build_mosque(Vector3(-84, 0, 28))
-	get_node("NeighborhoodMosque").scale = Vector3(0.82, 0.82, 0.82)
-	_build_park(Vector3(28, 0, -28))
-	get_node("NeighborhoodPark").scale = Vector3(0.52, 0.52, 0.52)
-	_build_market(Vector3(-28, 0, -28))
-	get_node("FruitVegetableMarket").scale = Vector3(0.78, 0.78, 0.78)
+	_build_storefront("PHARMACY", Vector3(140, 0, 28), Color(0.10, 0.48, 0.30), "✚")
+	_build_storefront("MAGAZINE", Vector3(-140, 0, 28), Color(0.12, 0.30, 0.48), "NEWS")
+	_build_school(Vector3(140, 0, 84))
+	_build_mosque(Vector3(-140, 0, 84))
+	_build_park(Vector3(140, 0, -84))
+	_build_market(Vector3(-140, 0, -84))
 	print("PHANTOM OPS: pharmacy, newsstand, school, mosque, park and produce market added")
 
 func _label(parent: Node3D, caption: String, at: Vector3, color: Color) -> void:
@@ -259,10 +255,10 @@ func _build_city_grid() -> void:
 		var road_x := float(grid) * block_spacing
 		_add_box("DistrictRoadX_%d" % grid, Vector3(680, 0.07, 13), Vector3(0, 0.025, road_z), road_mat)
 		_add_box("DistrictRoadZ_%d" % grid, Vector3(13, 0.07, 680), Vector3(road_x, 0.026, 0), road_mat)
-		_add_box("SidewalkNorth_%d" % grid, Vector3(680, 0.12, 2.4), Vector3(0, 0.11, road_z - 8.0), sidewalk_mat)
-		_add_box("SidewalkSouth_%d" % grid, Vector3(680, 0.12, 2.4), Vector3(0, 0.11, road_z + 8.0), sidewalk_mat)
-		_add_box("SidewalkWest_%d" % grid, Vector3(2.4, 0.12, 680), Vector3(road_x - 8.0, 0.11, 0), sidewalk_mat)
-		_add_box("SidewalkEast_%d" % grid, Vector3(2.4, 0.12, 680), Vector3(road_x + 8.0, 0.11, 0), sidewalk_mat)
+		_add_box("SidewalkNorth_%d" % grid, Vector3(680, 0.12, 4.0), Vector3(0, 0.11, road_z - 9.5), sidewalk_mat)
+		_add_box("SidewalkSouth_%d" % grid, Vector3(680, 0.12, 4.0), Vector3(0, 0.11, road_z + 9.5), sidewalk_mat)
+		_add_box("SidewalkWest_%d" % grid, Vector3(4.0, 0.12, 680), Vector3(road_x - 9.5, 0.11, 0), sidewalk_mat)
+		_add_box("SidewalkEast_%d" % grid, Vector3(4.0, 0.12, 680), Vector3(road_x + 9.5, 0.11, 0), sidewalk_mat)
 		_add_box("RoadDashX_%d" % grid, Vector3(680, 0.025, 0.18), Vector3(0, 0.075, road_z), line_mat)
 		_add_box("RoadDashZ_%d" % grid, Vector3(0.18, 0.025, 680), Vector3(road_x, 0.076, 0), line_mat)
 
@@ -271,7 +267,7 @@ func _build_city_grid() -> void:
 			var center := Vector3((float(gx) + 0.5) * block_spacing, 0, (float(gz) + 0.5) * block_spacing)
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
-					var offset := Vector3(sx * 18.0, 0, sz * 18.0)
+					var offset := Vector3(sx * 9.2, 0, sz * 9.2)
 					var seed_value := (gx * 97 + gz * 31 + int(sx + 2) * 11 + int(sz + 2) * 7) & 0x7fffffff
 					_create_building(center + offset, seed_value)
 			# Yield after each city block: keeps frame time bounded during scene entry.
