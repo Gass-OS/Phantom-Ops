@@ -1,6 +1,5 @@
 extends Node3D
 
-const WeatherScript = preload("res://scripts/weather.gd")
 const SpawnerScript = preload("res://scripts/world_spawner.gd")
 const ExpansionScript = preload("res://scripts/city_expansion.gd")
 const MissionScript = preload("res://scripts/mission_director.gd")
@@ -47,10 +46,13 @@ func _ready() -> void:
     player.velocity = Vector3.ZERO
     player.position.y = maxf(player.position.y, 1.2)
 
-    if get_node_or_null("Weather") == null:
-        var weather = WeatherScript.new()
-        weather.name = "Weather"
-        add_child(weather)
+    # Weather is owned by the city generator. Avoid a second WorldEnvironment,
+    # sun and particle system being layered over the same world.
+
+    if get_node_or_null("CityLifeVoice") == null:
+        var city_voice = load("res://scripts/city_life_voice.gd").new()
+        city_voice.name = "CityLifeVoice"
+        add_child(city_voice)
 
     if get_node_or_null("WorldSpawner") == null:
         var spawner = SpawnerScript.new()
