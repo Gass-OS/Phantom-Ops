@@ -70,8 +70,8 @@ func _build_city_grid() -> void:
 		road.roughness = 0.96
 		_add_box("DistrictRoadX_%d" % grid, Vector3(640, 0.035, 13), Vector3(0, 0.012, grid * block_spacing), road)
 		_add_box("DistrictRoadZ_%d" % grid, Vector3(13, 0.035, 640), Vector3(grid * block_spacing, 0.013, 0), road)
-	for gx in range(-district_radius - 1, district_radius + 1):
-		for gz in range(-district_radius - 1, district_radius + 1):
+	for gx in range(-district_radius, district_radius):
+		for gz in range(-district_radius, district_radius):
 			var center := Vector3((gx + 0.5) * block_spacing, 0, (gz + 0.5) * block_spacing)
 			for sx in [-1.0, 1.0]:
 				for sz in [-1.0, 1.0]:
