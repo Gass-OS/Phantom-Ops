@@ -4,8 +4,8 @@ const CitizenScript = preload("res://scripts/citizen.gd")
 const ZombieScript = preload("res://scripts/enemy_ai.gd")
 
 var player: Node3D = null
-var spawn_timer := 4.0
-var max_zombies := 8
+var spawn_timer := 16.0
+var max_zombies := 4
 var population_target := 18
 var population_check := 0.0
 
@@ -20,7 +20,7 @@ func _spawn_initial() -> void:
 		return
 	for i in range(population_target):
 		_spawn_citizen(i)
-	for i in range(3):
+	for i in range(2):
 		_spawn_zombie()
 	print("PHANTOM OPS: spawned ", population_target, " nearby civilians")
 
@@ -54,11 +54,11 @@ func _process(delta: float) -> void:
 	var new_wave := 1 + int(GameManager.kills / 8.0)
 	if new_wave != GameManager.wave:
 		GameManager.wave = new_wave
-		max_zombies = 6 + new_wave * 2
+		max_zombies = mini(6, 3 + new_wave)
 		GameManager.stats_changed.emit()
 	spawn_timer -= delta
 	if spawn_timer <= 0.0:
-		spawn_timer = maxf(2.0, 7.0 - GameManager.wave * 0.4)
+		spawn_timer = maxf(10.0, 18.0 - GameManager.wave * 0.5)
 		if get_tree().get_nodes_in_group("zombie").size() < max_zombies:
 			_spawn_zombie()
 
