@@ -18,6 +18,10 @@ var arm_l: Node3D
 var arm_r: Node3D
 var leg_l: Node3D
 var leg_r: Node3D
+var nameplate: Label3D
+var citizen_name := ""
+var action_timer := 0.0
+var action_state := "walking"
 
 var skins = [Color(0.87, 0.70, 0.52), Color(0.76, 0.58, 0.42), Color(0.68, 0.50, 0.36)]
 var robe_colors = [Color(0.93, 0.90, 0.82), Color(0.80, 0.78, 0.72), Color(0.55, 0.42, 0.30), Color(0.35, 0.40, 0.50)]
@@ -26,6 +30,8 @@ var hijab_colors = [Color(0.95, 0.95, 0.95), Color(0.85, 0.40, 0.55), Color(0.20
 
 func _ready() -> void:
 	add_to_group("civilian")
+	citizen_name = _pick_name()
+	_build_nameplate()
 	collision_layer = 2
 	collision_mask = 1 | 2 | 4
 	safe_margin = 0.06
@@ -48,6 +54,24 @@ func _ready() -> void:
 	col.shape = cap
 	add_child(col)
 	_build_model()
+
+func _pick_name() -> String:
+	var names := ["Youssef","Mariam","Amine","Salma","Sami","Ines","Karim","Nour","Fares","Lina","Hatem","Aya","Walid","Rania","Mahdi","Sana"]
+	return names[randi() % names.size()]
+
+func _build_nameplate() -> void:
+	nameplate = Label3D.new()
+	nameplate.name = "CitizenNameplate"
+	nameplate.text = citizen_name
+	nameplate.position = Vector3(0, 1.35, 0)
+	nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	nameplate.font_size = 28
+	nameplate.pixel_size = 0.0045
+	nameplate.modulate = Color(0.88, 0.95, 1.0, 0.92)
+	nameplate.outline_size = 5
+	nameplate.outline_modulate = Color(0.025, 0.04, 0.055, 0.95)
+	nameplate.no_depth_test = true
+	add_child(nameplate)
 
 func _lane_point(along: float) -> Vector3:
 	if axis == 0:
@@ -137,6 +161,14 @@ func _physics_process(delta: float) -> void:
 	elif velocity.y < 0.0:
 		velocity.y = 0.0
 	flee_timer -= delta
+	action_timer -= delta
+	if action_timer <= 0.0:
+		action_timer = randf_range(3.0, 7.0)
+		if threat_dir.length_squared() < 0.001:
+			action_state = ["walking", "looking around", "checking phone", "waiting"][randi() % 4]
+	var camera := get_viewport().get_camera_3d()
+	if is_instance_valid(nameplate):
+		nameplate.visible = camera == null or global_position.distance_to(camera.global_position) < 34.0
 	if flee_timer <= 0.0:
 		flee_timer = 0.4
 		threat_dir = Vector3.ZERO
@@ -171,7 +203,7 @@ func _physics_process(delta: float) -> void:
 		leg_l.rotation.x = -sin(walk_phase) * 0.48
 		leg_r.rotation.x = sin(walk_phase) * 0.48
 	else:
-		arm_l.rotation.x = lerpf(arm_l.rotation.x, 0.0, delta * 5.0)
+		arm_l.rotation.x = lerpf(arm_l.rotation.x, -0.18 if action_state == "checking phone" else 0.0, delta * 5.0)
 		arm_r.rotation.x = lerpf(arm_r.rotation.x, 0.0, delta * 5.0)
 		leg_l.rotation.x = lerpf(leg_l.rotation.x, 0.0, delta * 5.0)
 		leg_r.rotation.x = lerpf(leg_r.rotation.x, 0.0, delta * 5.0)
