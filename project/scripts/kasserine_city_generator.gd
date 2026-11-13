@@ -31,7 +31,6 @@ func _ready() -> void:
 	_build_city_blocks()
 	_build_street_lighting()
 	_build_vegetation()
-	call_deferred("_spawn_hostiles")
 	_build_weather()
 	print("PHANTOM OPS: world generation complete")
 
@@ -181,8 +180,9 @@ func _build_street_lighting() -> void:
 			var light := OmniLight3D.new()
 			light.position = Vector3(-1.1,4.95,0)
 			light.light_color = Color(1.0,0.70,0.42)
-			light.light_energy = 1.15
-			light.omni_range = 13.0
+			light.light_energy = 0.55
+			light.omni_range = 8.0
+			light.shadow_enabled = false
 			pole.add_child(light)
 
 func _build_vegetation() -> void:
