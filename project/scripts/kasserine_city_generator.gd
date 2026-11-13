@@ -190,14 +190,36 @@ func _build_vegetation() -> void:
 	trunk_mat.albedo_color = Color(0.22,0.16,0.11)
 	var leaf_mat := StandardMaterial3D.new()
 	leaf_mat.albedo_color = Color(0.12,0.23,0.17)
-	for i in range(18):
-		var x := randf_range(-100,100)
-		var z := randf_range(-100,100)
-		if absf(x) < 18 or absf(z) < 18: continue
-		var tree := Node3D.new()
+	var planted := 0
+	for attempt in range(100):
+		if planted >= 18:
+			break
+		var x := randf_range(-108,108)
+		var z := randf_range(-108,108)
+		# Keep trees off both the original 30m streets and the expanded 56m avenues.
+		if _near_road(x, z):
+			continue
+		# Keep trunks and canopies clear of the original building plots.
+		var near_building := false
+		for plot_x in [-105.0,-80.0,-45.0,45.0,80.0,105.0]:
+			for plot_z in [-105.0,-80.0,-45.0,45.0,80.0,105.0]:
+				if absf(x-plot_x) < 13.0 and absf(z-plot_z) < 13.0:
+					near_building = true
+					break
+			if near_building:
+				break
+		if near_building:
+			continue
+		var tree := StaticBody3D.new()
 		tree.name = "StreetTree"
 		tree.position = Vector3(x,0,z)
 		add_child(tree)
+		var trunk_shape := BoxShape3D.new()
+		trunk_shape.size = Vector3(0.65,2.8,0.65)
+		var trunk_collision := CollisionShape3D.new()
+		trunk_collision.shape = trunk_shape
+		trunk_collision.position.y = 1.4
+		tree.add_child(trunk_collision)
 		_box(tree,"Trunk",Vector3(0.55,2.6,0.55),Vector3(0,1.3,0),trunk_mat)
 		var crown := MeshInstance3D.new()
 		var mesh := SphereMesh.new()
@@ -207,6 +229,15 @@ func _build_vegetation() -> void:
 		crown.mesh = mesh
 		crown.position.y = 3.2
 		tree.add_child(crown)
+		planted += 1
+
+func _near_road(x: float, z: float) -> bool:
+	for spacing in [30.0,56.0]:
+		if absf(x-roundf(x/spacing)*spacing) < (7.0 if spacing == 30.0 else 8.0):
+			return true
+		if absf(z-roundf(z/spacing)*spacing) < (7.0 if spacing == 30.0 else 8.0):
+			return true
+	return false
 
 func _spawn_hostiles() -> void:
 	# Player._ready runs after this generator's _ready; resolve it now, not earlier.
