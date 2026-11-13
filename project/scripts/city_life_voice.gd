@@ -4,7 +4,7 @@ extends Node
 @export var minimum_interval := 18.0
 @export var maximum_interval := 30.0
 
-var timer := 5.0
+var timer := 2.5
 var voice_id := ""
 var voice_locale := "en"
 
@@ -19,7 +19,7 @@ func _ready() -> void:
 	# Prefer French for the Tunisian city ambience, then Arabic, then English.
 	for wanted in ["fr", "ar", "en"]:
 		for voice in voices:
-			var locale := str(voice.get("locale", "")).to_lower()
+			var locale := str(voice.get("language", "")).to_lower()
 			if locale.begins_with(wanted):
 				voice_id = str(voice.get("id", ""))
 				voice_locale = wanted
@@ -28,7 +28,7 @@ func _ready() -> void:
 			break
 	if voice_id.is_empty():
 		voice_id = str(voices[0].get("id", ""))
-	timer = randf_range(minimum_interval, maximum_interval)
+	timer = 2.5
 
 func _process(delta: float) -> void:
 	if not enabled or voice_id.is_empty():
@@ -64,8 +64,8 @@ func _process(delta: float) -> void:
 				"Watch out, a car is coming."
 			]
 	var phrase := phrases[randi() % phrases.size()]
-	DisplayServer.tts_speak(phrase, voice_id, 1.0, 1.0, 0.95, 1)
-	print("PHANTOM OPS: ambient voice requested: ", voice_locale)
+	DisplayServer.tts_speak(phrase, voice_id, 100, 1.0, 0.95, 1, true)
+	print("PHANTOM OPS: ambient voice requested: ", voice_locale, " voice=", voice_id)
 	timer = randf_range(minimum_interval, maximum_interval)
 
 func _exit_tree() -> void:
