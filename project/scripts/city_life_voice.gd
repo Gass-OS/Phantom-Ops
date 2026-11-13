@@ -5,7 +5,8 @@ extends Node
 @export var maximum_interval := 30.0
 
 var timer := 2.5
-var prayer_timer := 75.0
+var prayer_timer := 180.0
+var prayer_voice_id := ""
 var voice_id := ""
 var voice_locale := "en"
 
@@ -17,6 +18,11 @@ func _ready() -> void:
 	if voices.is_empty():
 		print("PHANTOM OPS: Android TTS returned no installed voices; install/enable a system speech engine in Android settings")
 		return
+	# Select Arabic independently for respectful prayer reminders.
+	for voice in voices:
+		if str(voice.get("language", "")).to_lower().begins_with("ar"):
+			prayer_voice_id = str(voice.get("id", ""))
+			break
 	# Prefer French for the Tunisian city ambience, then Arabic, then English.
 	for wanted in ["fr", "ar", "en"]:
 		for voice in voices:
@@ -33,8 +39,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	prayer_timer -= delta
-	if prayer_timer <= 0.0 and not voice_id.is_empty() and not DisplayServer.tts_is_speaking():
-		DisplayServer.tts_speak("تذكير لطيف: حان وقت الصلاة، نسأل الله لكم السكينة والسلام.", voice_id, 88, 1.0, 0.92, 1, true)
+	if prayer_timer <= 0.0 and not prayer_voice_id.is_empty() and not DisplayServer.tts_is_speaking():
+		DisplayServer.tts_speak("اللهم صل وسلم على نبينا محمد. تذكير لطيف: لا تنسوا الصلاة.", prayer_voice_id, 88, 1.0, 0.92, 1, true)
 		prayer_timer = 300.0
 	if not enabled or voice_id.is_empty():
 		return
