@@ -7,7 +7,7 @@ const Citizen = preload("res://scripts/citizen.gd")
 @export_range(2, 5) var district_radius := 3
 @export var block_spacing := 56.0
 @export var traffic_count := 18
-@export var extra_citizens := 64
+@export var extra_citizens := 24
 
 var rng := RandomNumberGenerator.new()
 var wall_mats: Array[StandardMaterial3D] = []
@@ -199,14 +199,17 @@ func _build_street_props() -> void:
 			pole.add_child(light)
 
 func _spawn_residents() -> void:
+	# Spread residents over the whole district instead of stacking them on a few lanes.
 	for i in range(extra_citizens):
 		var person = Citizen.new()
 		person.is_female = (i % 2 == 1)
 		person.variant = i + 20
 		person.spawn_near_center = true
 		person.spawn_center = Vector3.ZERO
-		person.spawn_radius = 155.0
+		person.spawn_radius = 150.0
 		person.axis = i % 2
-		person.lane = float(rng.randi_range(-district_radius, district_radius)) * block_spacing + (9.2 if i % 3 == 0 else -9.2)
+		var road_index := posmod(i * 3 + int(i / 5), district_radius * 2 + 1) - district_radius
+		var side_offset := 9.2 if (i / 2) % 2 == 0 else -9.2
+		person.lane = float(road_index) * block_spacing + side_offset
 		add_child(person)
 		person.position.y = 0.92
