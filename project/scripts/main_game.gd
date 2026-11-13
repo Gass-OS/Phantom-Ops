@@ -63,6 +63,56 @@ func _ready() -> void:
     print("PHANTOM OPS: safety world ready")
 
 
+var _leaving_game := false
+
+func _safe_return_to_menu() -> void:
+	if _leaving_game:
+		return
+	_leaving_game = true
+	var tree := get_tree()
+	var old_scene := tree.current_scene
+	var menu_pack := load("res://scenes/main_menu.tscn") as PackedScene
+	if menu_pack == null:
+		push_error("PHANTOM OPS: unable to load main menu during safe exit")
+		_leaving_game = false
+		return
+	var menu := menu_pack.instantiate()
+	tree.root.add_child(menu)
+	tree.current_scene = menu
+	# Freeze gameplay and hide the old 3D scene immediately, then free it gradually.
+	if is_instance_valid(old_scene):
+		old_scene.process_mode = Node.PROCESS_MODE_DISABLED
+		old_scene.visible = false
+	var hud := tree.root.get_node_or_null("MobileHUDLayer")
+	if is_instance_valid(hud):
+		hud.process_mode = Node.PROCESS_MODE_DISABLED
+	for effect in tree.root.find_children("*", "GPUParticles3D", true, false):
+		effect.emitting = false
+	for effect in tree.root.find_children("*", "CPUParticles3D", true, false):
+		effect.emitting = false
+	DisplayServer.tts_stop()
+	if is_instance_valid(old_scene):
+		var pending: Array[Node] = []
+		_collect_nodes_postorder(old_scene, pending)
+		var freed := 0
+		for item in pending:
+			if is_instance_valid(item):
+				item.free()
+			freed += 1
+			if freed % 96 == 0:
+				await tree.process_frame
+		if is_instance_valid(old_scene):
+			old_scene.free()
+	if is_instance_valid(hud):
+		hud.free()
+	print("PHANTOM OPS: world unloaded in batches; returned safely to menu")
+
+func _collect_nodes_postorder(parent: Node, result: Array[Node]) -> void:
+	for child in parent.get_children():
+		_collect_nodes_postorder(child, result)
+		result.append(child)
+
+
 func _has_ground_collision() -> bool:
     var ground = city.get_node_or_null("GroundCollision")
     if ground == null:
