@@ -118,10 +118,8 @@ func _build_ground_and_roads() -> void:
 	# Main asphalt cross and secondary streets.
 	_box(self, "MainRoadNorthSouth", Vector3(15,0.08,city_size.y*2.0), Vector3(0,0.015,0), asphalt)
 	_box(self, "MainRoadEastWest", Vector3(city_size.x*2.0,0.08,15), Vector3(0,0.016,0), asphalt)
-	for x in [-90.0,-60.0,-30.0,30.0,60.0,90.0]:
-		_box(self, "RoadX_%d" % int(x), Vector3(9,0.06,city_size.y*2.0), Vector3(x,0.02,0), asphalt)
-	for z in [-90.0,-60.0,-30.0,30.0,60.0,90.0]:
-		_box(self, "RoadZ_%d" % int(z), Vector3(city_size.x*2.0,0.06,9), Vector3(0,0.02,z), asphalt)
+	# The expanded district owns the 56m street grid. Do not lay a second
+	# 30m road grid through the building plots; it caused buildings to sit in asphalt.
 	# Sidewalk ribbons, broken white lane markers and crossings.
 	for z in [-8.6,8.6]:
 		_box(self, "MainSidewalkZ_%d" % int(z), Vector3(city_size.x*2.0,0.12,2.0), Vector3(0,0.07,z), sidewalk)
@@ -134,7 +132,14 @@ func _build_ground_and_roads() -> void:
 		_box(self, "CrossMark_%d" % i, Vector3(3.2,0.025,0.22), Vector3(i*9.0,0.071,0), marking)
 
 func _build_city_blocks() -> void:
-	var plots := [Vector2(-45,-45),Vector2(45,-45),Vector2(-45,45),Vector2(45,45),Vector2(-80,-45),Vector2(80,-45),Vector2(-80,45),Vector2(80,45),Vector2(-45,-80),Vector2(45,-80),Vector2(-45,80),Vector2(45,80),Vector2(-105,-45),Vector2(105,-45),Vector2(-105,45),Vector2(105,45),Vector2(-45,-105),Vector2(45,-105),Vector2(-45,105),Vector2(45,105),Vector2(-105,-105),Vector2(105,-105),Vector2(-105,105),Vector2(105,105)]
+	var plots := [
+		Vector2(-105,-105), Vector2(-105,-45), Vector2(-105,45), Vector2(-105,105),
+		Vector2(-45,-105), Vector2(-45,105), Vector2(45,-105), Vector2(45,105),
+		Vector2(105,-105), Vector2(105,-45), Vector2(105,45), Vector2(105,105),
+		Vector2(-80,-80), Vector2(-80,80), Vector2(80,-80), Vector2(80,80),
+		Vector2(-45,-45), Vector2(-45,45), Vector2(45,-45), Vector2(45,45),
+		Vector2(-80,-45), Vector2(80,-45), Vector2(-80,45), Vector2(80,45)
+	]
 	for i in range(building_count):
 		var p: Vector2 = plots[i % plots.size()]
 		var offset := Vector2(randf_range(-8,8),randf_range(-8,8))
