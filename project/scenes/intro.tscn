@@ -7,10 +7,10 @@
 # v0.2.1 black-screen fix, same as main_game: plain colour background
 # + colour ambient, Filmic, no fog, no Sky. Never black on Mobile.
 background_mode = 1
-background_color = Color(0.53, 0.67, 0.84, 1)
+background_color = Color(0.42, 0.44, 0.55, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.85, 0.82, 0.75, 1)
-ambient_light_energy = 0.9
+ambient_light_color = Color(0.62, 0.60, 0.58, 1)
+ambient_light_energy = 0.75
 tonemap_mode = 2
 tonemap_exposure = 1.0
 glow_enabled = false

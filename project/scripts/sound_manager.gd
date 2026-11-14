@@ -122,6 +122,11 @@ static func hurt_stream() -> AudioStreamWAV:
 	return _cached_stream("hurt", func() -> AudioStreamWAV:
 		return _tone(180.0, 0.18, 0.6, 22.0, 90.0))
 
+## v0.5: death sting — low descending tone + heavy thud.
+static func death_stream() -> AudioStreamWAV:
+	return _cached_stream("death", func() -> AudioStreamWAV:
+		return _mix(_tone(160.0, 1.1, 0.55, 3.0, 45.0), _noise(0.5, 0.7, 8.0, 0.3)))
+
 static func click_stream() -> AudioStreamWAV:
 	return _cached_stream("click", func() -> AudioStreamWAV:
 		return _tone(1000.0, 0.06, 0.4, 90.0))
@@ -199,6 +204,9 @@ func play_enemy_death() -> void:
 
 func play_hurt() -> void:
 	_play(hurt_stream(), -6.0)
+
+func play_death() -> void:
+	_play(death_stream(), -4.0)
 
 func play_click() -> void:
 	_play(click_stream(), -8.0)

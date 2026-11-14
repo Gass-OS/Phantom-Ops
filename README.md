@@ -5,6 +5,35 @@ Android (arm64-v8a). The whole city, textures, weapon and sounds are
 generated procedurally in GDScript at runtime. One exception: the hero is
 Aymen's own 3D scan (`project/assets/characters/aymen.glb`, LowPoly).
 
+## v0.5 — Death flow fixed + GTA IV-style grit
+
+- **Death no longer dead-ends the game (was reported as a crash)**:
+  `player_died` used to be emitted with nothing listening — the player
+  froze, enemies swarmed the corpse, and there was no screen, no retry,
+  no way out except force-closing the app. Now `mobile_hud.gd` shows a
+  full-screen YOU DIED overlay (dark red wash, final SCORE / KILLS /
+  WAVE, big RETRY + MAIN MENU buttons), `player.gd` stops the waves on
+  death, `enemy_spawner.gd` gains `stop_waves()`, and `enemy_ai.gd`
+  stops moving and attacking when its target `is_dead`. RETRY reloads
+  `main_game.tscn` cleanly with a fresh HUD (verified headless: death
+  → overlay shown → RETRY → new player alive at 100 HP, one HUD layer).
+  A low death sting was added to `sound_manager.gd`.
+- **GTA IV look (honest scope)**: this is still Godot 4.2 Mobile with
+  procedural geometry — it cannot literally be Rockstar's RAGE engine —
+  but v0.5 pushes the whole game toward that gritty, desaturated dusk
+  Liberty City look: darker dusk sky + dim warm ambient (still
+  BG_COLOR + COLOR ambient, Filmic, **no Sky / fog / ACES / MSAA** —
+  see v0.2.1), low warm sun with longer shadows, mobile shadow size
+  raised to 2048, grime/stain/soot/oil/crack textures on facades and
+  roads, some windows lit warm, 3D windows with real depth on tall
+  buildings, cornices, drain pipes, rooftop water tanks + antennas,
+  more balconies, real warm light pools from lamps near the plaza,
+  cars with windshields / bumpers / headlights / hubcaps, fuller
+  market stalls, more dust and clouds. Enemies now have three uniform
+  palettes, varied skin tones, boots, backpacks, vest pouches and a
+  walk cycle; the rifle viewmodel gains a rail, charging handle,
+  front sight and butt pad.
+
 ## v0.4 — AAA Kasserine: drone intro, live menu, mosque, citizens, voices
 
 - **Drone intro cinematic** (`scenes/intro.tscn`, `scripts/intro_cinematic.gd`):

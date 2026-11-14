@@ -14,6 +14,11 @@ signal fire_held_changed(value: bool)
 signal pause_pressed
 signal resume_pressed
 signal menu_pressed
+# v0.5: death flow. RETRY reloads the game, death_menu_pressed goes
+# to the main menu. Before v0.5 nothing listened to player_died, so
+# death left the player frozen with no screen and no way out.
+signal retry_pressed
+signal death_menu_pressed
 signal sound_toggled(value: bool)
 signal voices_toggled(value: bool)
 signal sprint_changed(value: bool)
@@ -23,6 +28,12 @@ var fire_id := -1
 var run_id := -1
 var move_value := Vector2.ZERO
 var paused := false
+# v0.5 death state. While dead the game buttons are inert and only
+# the RETRY / MAIN MENU buttons respond.
+var dead := false
+var death_score := 0
+var death_kills := 0
+var death_wave := 1
 var sprinting := false
 var sound_on := true
 var voices_on := true
@@ -62,6 +73,10 @@ func _layout(w: float, h: float) -> Dictionary:
 		"sound_r": 58.0 * s,
 		"voices_c": Vector2(w * 0.5, h * 0.86),
 		"voices_r": 58.0 * s,
+		"retry_c": Vector2(w * 0.5, h * 0.58),
+		"retry_r": 58.0 * s,
+		"death_menu_c": Vector2(w * 0.5, h * 0.76),
+		"death_menu_r": 58.0 * s,
 		"s": s,
 	}
 
@@ -108,6 +123,24 @@ func show_hitmarker() -> void:
 func set_sound_on(v: bool) -> void:
 	sound_on = v
 	queue_redraw()
+
+# v0.5: show the death overlay. Called once from player._on_player_died.
+func show_death(final_score: int, final_kills: int, final_wave: int) -> void:
+	dead = true
+	death_score = final_score
+	death_kills = final_kills
+	death_wave = final_wave
+	# Release any held buttons so a held FIRE cannot leak into retry.
+	fire_id = -1
+	joy_id = -1
+	look_id = -1
+	run_id = -1
+	sprinting = false
+	move_value = Vector2.ZERO
+	queue_redraw()
+
+func is_dead_shown() -> bool:
+	return dead
 
 func set_voices_on(v: bool) -> void:
 	voices_on = v
@@ -165,7 +198,7 @@ func _draw() -> void:
 	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y - fire_r - 18.0 * sc), ammo_text, HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(24.0 * sc), ammo_col)
 	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y + fire_r + 30.0 * sc), "HOLD FIRE = AUTO", HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(14.0 * sc), Color(1, 1, 1, 0.65))
 	# Crosshair + hit marker, screen centre.
-	if not paused:
+	if not paused and not dead:
 		var cx := w / 2
 		var cy := h / 2
 		var ch := Color(1, 1, 1, 0.9)
@@ -200,6 +233,22 @@ func _draw() -> void:
 		_button(voices_c, voices_r, Color(0.30, 0.35, 0.20, 0.98))
 		var voices_text := "VOICES: ON" if voices_on else "VOICES: OFF"
 		draw_string(f, Vector2(voices_c.x - 120.0 * sc, voices_c.y + 6.0 * sc), voices_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
+	if dead:
+		# v0.5 death overlay: dark red wash over the whole screen, big
+		# YOU DIED, final stats, RETRY + MAIN MENU. Drawn last so it
+		# covers the game buttons.
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0.10, 0.01, 0.01, 0.88), true)
+		draw_string(f, Vector2(w / 2 - 320, h * 0.26), "YOU DIED", HORIZONTAL_ALIGNMENT_CENTER, 640, int(64.0 * sc), Color(0.95, 0.25, 0.18))
+		var stats := "SCORE %d    KILLS %d    WAVE %d" % [death_score, death_kills, death_wave]
+		draw_string(f, Vector2(w / 2 - 320, h * 0.40), stats, HORIZONTAL_ALIGNMENT_CENTER, 640, int(26.0 * sc), Color(1, 0.9, 0.75))
+		var retry_c: Vector2 = lay["retry_c"]
+		var retry_r: float = lay["retry_r"]
+		_button(retry_c, retry_r, Color(0.12, 0.42, 0.30, 0.98))
+		draw_string(f, Vector2(retry_c.x - 130.0 * sc, retry_c.y + 8.0 * sc), "RETRY", HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(24.0 * sc), Color.WHITE)
+		var dm_c: Vector2 = lay["death_menu_c"]
+		var dm_r: float = lay["death_menu_r"]
+		_button(dm_c, dm_r, Color(0.45, 0.16, 0.13, 0.98))
+		draw_string(f, Vector2(dm_c.x - 130.0 * sc, dm_c.y + 8.0 * sc), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(22.0 * sc), Color.WHITE)
 
 func _draw_compass(f: Font, w: float) -> void:
 	var heading := wrapf(-rad_to_deg(compass_yaw), 0.0, 360.0)
@@ -238,7 +287,7 @@ func _gui_input(e: InputEvent) -> void:
 			move_value = ((e.position - joy_c) / joy_r).limit_length(1)
 			move_changed.emit(move_value)
 			queue_redraw()
-		elif e.index == look_id and not paused:
+		elif e.index == look_id and not paused and not dead:
 			look_delta.emit(e.relative)
 		accept_event()
 	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
@@ -246,11 +295,18 @@ func _gui_input(e: InputEvent) -> void:
 			_start(-2, e.position, s.x, s.y)
 		else:
 			_end(-2)
-	elif e is InputEventMouseMotion and look_id == -2 and not paused:
+	elif e is InputEventMouseMotion and look_id == -2 and not paused and not dead:
 		look_delta.emit(e.relative)
 
 func _start(id: int, p: Vector2, w: float, h: float) -> void:
 	var lay := _layout(w, h)
+	if dead:
+		# Only the death buttons respond; every game button is inert.
+		if p.distance_to(lay["retry_c"]) <= float(lay["retry_r"]) + 12.0:
+			retry_pressed.emit()
+		elif p.distance_to(lay["death_menu_c"]) <= float(lay["death_menu_r"]) + 12.0:
+			death_menu_pressed.emit()
+		return
 	if paused:
 		# Circle hit-tests, same centres as drawn — no y-only bands.
 		if p.distance_to(lay["resume_c"]) <= float(lay["resume_r"]) + 12.0:

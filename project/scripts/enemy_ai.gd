@@ -11,6 +11,11 @@ var current_health: float = 60.0
 var target: Node3D = null
 var is_dead: bool = false
 var gravity: float = 9.8
+var _leg_l: MeshInstance3D
+var _leg_r: MeshInstance3D
+var _arm_l: MeshInstance3D
+var _arm_r: MeshInstance3D
+var _walk_phase: float = 0.0
 
 func _ready():
 	current_health = max_health
@@ -24,11 +29,19 @@ func _build_body() -> void:
 	var body := Node3D.new()
 	body.name = "Body"
 	add_child(body)
+	# v0.5 GTA-style variety: three uniform palettes + varied skin tones,
+	# so enemies stop reading as clones.
+	var palettes: Array = [
+		[Color(0.23, 0.26, 0.20), Color(0.72, 0.55, 0.42)],
+		[Color(0.16, 0.18, 0.24), Color(0.62, 0.46, 0.34)],
+		[Color(0.38, 0.32, 0.22), Color(0.80, 0.62, 0.46)],
+	]
+	var pick: Array = palettes[randi() % palettes.size()]
 	var uniform := StandardMaterial3D.new()
-	uniform.albedo_color = Color(0.23, 0.26, 0.20)
+	uniform.albedo_color = pick[0]
 	uniform.roughness = 0.9
 	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color(0.72, 0.55, 0.42)
+	skin.albedo_color = pick[1]
 	skin.roughness = 0.9
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.12, 0.12, 0.13)
@@ -64,6 +77,18 @@ func _build_body() -> void:
 		leg.mesh = leg_mesh
 		leg.position = Vector3(lx, 0.33, 0)
 		body.add_child(leg)
+		if lx < 0.0:
+			_leg_l = leg
+		else:
+			_leg_r = leg
+		# Boot: dark box at the foot.
+		var boot := MeshInstance3D.new()
+		var boot_mesh := BoxMesh.new()
+		boot_mesh.size = Vector3(0.24, 0.14, 0.34)
+		boot_mesh.material = dark
+		boot.mesh = boot_mesh
+		boot.position = Vector3(lx, 0.07, 0.05)
+		body.add_child(boot)
 	var gun := MeshInstance3D.new()
 	var gun_mesh := BoxMesh.new()
 	gun_mesh.size = Vector3(0.08, 0.12, 0.7)
@@ -71,6 +96,23 @@ func _build_body() -> void:
 	gun.mesh = gun_mesh
 	gun.position = Vector3(0.25, 1.15, 0.3)
 	body.add_child(gun)
+	# Gun magazine + stock, so the weapon reads at distance.
+	var gun_mag := MeshInstance3D.new()
+	var gun_mag_mesh := BoxMesh.new()
+	gun_mag_mesh.size = Vector3(0.06, 0.22, 0.1)
+	gun_mag_mesh.material = dark
+	gun_mag.mesh = gun_mag_mesh
+	gun_mag.position = Vector3(0.25, 1.0, 0.28)
+	gun_mag.rotation.x = 0.25
+	body.add_child(gun_mag)
+	# Backpack on the back.
+	var pack := MeshInstance3D.new()
+	var pack_mesh := BoxMesh.new()
+	pack_mesh.size = Vector3(0.44, 0.5, 0.22)
+	pack_mesh.material = dark
+	pack.mesh = pack_mesh
+	pack.position = Vector3(0, 1.15, -0.28)
+	body.add_child(pack)
 	# Arms, vest plate and headband stripe — reads at distance.
 	var vest_mat := StandardMaterial3D.new()
 	vest_mat.albedo_color = Color(0.30, 0.28, 0.20)
@@ -92,6 +134,15 @@ func _build_body() -> void:
 	band.mesh = band_mesh
 	band.position = Vector3(0, 1.70, 0)
 	body.add_child(band)
+	# Vest pouches on the chest.
+	for px in [-0.14, 0.14]:
+		var pouch := MeshInstance3D.new()
+		var pouch_mesh := BoxMesh.new()
+		pouch_mesh.size = Vector3(0.16, 0.18, 0.08)
+		pouch_mesh.material = dark
+		pouch.mesh = pouch_mesh
+		pouch.position = Vector3(px, 1.02, 0.26)
+		body.add_child(pouch)
 	for ax in [-0.42, 0.42]:
 		var arm := MeshInstance3D.new()
 		var arm_mesh := BoxMesh.new()
@@ -101,6 +152,10 @@ func _build_body() -> void:
 		arm.position = Vector3(ax, 1.02, 0.05)
 		arm.rotation.z = -0.15 if ax < 0.0 else 0.15
 		body.add_child(arm)
+		if ax < 0.0:
+			_arm_l = arm
+		else:
+			_arm_r = arm
 
 func _physics_process(delta):
 	if is_dead:
@@ -110,6 +165,14 @@ func _physics_process(delta):
 	if not is_instance_valid(target):
 		velocity.x = 0
 		velocity.z = 0
+		move_and_slide()
+		return
+	# v0.5: when the player is dead, enemies stop — no more swarming
+	# the corpse or dealing damage while YOU DIED is on screen.
+	if target.get("is_dead") == true:
+		velocity.x = 0
+		velocity.z = 0
+		_set_walk_pose(0.0)
 		move_and_slide()
 		return
 	var difference = target.global_position - global_position
@@ -122,12 +185,25 @@ func _physics_process(delta):
 		var flat := Vector3(direction.x, 0, direction.z)
 		if flat.length() > 0.01:
 			rotation.y = atan2(-flat.x, -flat.z)
+		_walk_phase += delta * speed * 2.2
+		_set_walk_pose(sin(_walk_phase) * 0.4)
 	else:
 		velocity.x = 0
 		velocity.z = 0
+		_set_walk_pose(0.0)
 	if distance < 2.0 and target.has_method("take_damage"):
 		target.take_damage(damage * delta)
 	move_and_slide()
+
+func _set_walk_pose(swing: float) -> void:
+	if is_instance_valid(_leg_l):
+		_leg_l.rotation.x = swing
+	if is_instance_valid(_leg_r):
+		_leg_r.rotation.x = -swing
+	if is_instance_valid(_arm_l):
+		_arm_l.rotation.x = -swing * 0.7
+	if is_instance_valid(_arm_r):
+		_arm_r.rotation.x = swing * 0.7
 
 func take_damage(amount: float):
 	if is_dead:

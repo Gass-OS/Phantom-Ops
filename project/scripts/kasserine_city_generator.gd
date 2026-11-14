@@ -56,6 +56,10 @@ var mat_fruit: Array[StandardMaterial3D] = []
 var mat_dome: StandardMaterial3D
 var mat_gold: StandardMaterial3D
 var mat_mosque: StandardMaterial3D
+var mat_window_glass: StandardMaterial3D
+var mat_window_lit: StandardMaterial3D
+var mat_headlight: StandardMaterial3D
+var mat_pipe: StandardMaterial3D
 var _dust: Array = []
 
 func _ready() -> void:
@@ -78,16 +82,18 @@ func _ready() -> void:
 # environment at runtime so the 3D view can never be black. Matches the
 # WorldEnvironment in scenes/main_game.tscn and the fallback in
 # scripts/main_game.gd. Does nothing when one already exists.
+# v0.5: dusk colours (overcast blue-grey sky, dim warm ambient) for
+# the GTA IV look — still BG_COLOR + COLOR ambient, no fog/Sky/ACES.
 func _ensure_mobile_environment() -> void:
 	var scene_root: Node = get_tree().current_scene
 	if scene_root != null and not scene_root.find_children("*", "WorldEnvironment", true, false).is_empty():
 		return
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.53, 0.67, 0.84)
+	environment.background_color = Color(0.42, 0.44, 0.55)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.85, 0.82, 0.75)
-	environment.ambient_light_energy = 0.9
+	environment.ambient_light_color = Color(0.62, 0.60, 0.58)
+	environment.ambient_light_energy = 0.75
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.glow_enabled = false
 	environment.fog_enabled = false
@@ -125,9 +131,21 @@ func _setup_materials() -> void:
 	mat_tyre = ProceduralTextures.flat_material(Color(0.10, 0.10, 0.11), 0.95)
 	mat_bollard = ProceduralTextures.flat_material(Color(0.85, 0.65, 0.15), 0.8)
 	mat_cloud = StandardMaterial3D.new()
-	mat_cloud.albedo_color = Color(1.0, 1.0, 1.0, 0.85)
+	mat_cloud.albedo_color = Color(0.68, 0.66, 0.70, 0.85)
 	mat_cloud.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat_cloud.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# v0.5 GTA detail materials (shared): dark glass + lit windows.
+	mat_window_glass = ProceduralTextures.flat_material(Color(0.07, 0.09, 0.13), 0.15)
+	mat_window_glass.metallic = 0.4
+	mat_window_lit = ProceduralTextures.flat_material(Color(0.95, 0.70, 0.30), 0.4)
+	mat_window_lit.emission_enabled = true
+	mat_window_lit.emission = Color(1.0, 0.72, 0.28)
+	mat_window_lit.emission_energy_multiplier = 1.6
+	mat_headlight = ProceduralTextures.flat_material(Color(1.0, 0.95, 0.75), 0.3)
+	mat_headlight.emission_enabled = true
+	mat_headlight.emission = Color(1.0, 0.9, 0.6)
+	mat_headlight.emission_energy_multiplier = 2.0
+	mat_pipe = ProceduralTextures.flat_material(Color(0.20, 0.20, 0.22), 0.8)
 	mat_sun_disc = StandardMaterial3D.new()
 	mat_sun_disc.albedo_color = Color(1.0, 0.92, 0.65)
 	mat_sun_disc.emission_enabled = true
@@ -327,7 +345,27 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 	col.position.y = size.y * 0.5
 	body.add_child(col)
 	# Parapet / roof slab.
-	_flat_box(body, "RoofSlab", Vector3(0, size.y + 0.15, 0), Vector3(size.x + 0.6, 0.3, size.z + 0.6), ProceduralTextures.flat_material(Color(0.55, 0.48, 0.40), 0.95))
+	_flat_box(body, "RoofSlab", Vector3(0, size.y + 0.15, 0), Vector3(size.x + 0.6, 0.3, size.z + 0.6), ProceduralTextures.flat_material(Color(0.48, 0.42, 0.35), 0.95))
+	# v0.5: cornice trim just under the roof line — the box stops
+	# reading as a plain slab.
+	_flat_box(body, "Cornice", Vector3(0, size.y - 0.25, 0), Vector3(size.x + 0.35, 0.35, size.z + 0.35), mat_dark)
+	# v0.5: 3D windows with real depth on the street face of taller
+	# buildings — recessed dark glass, a few lit warm. The facade
+	# texture alone made walls read flat.
+	if size.y >= 8.0:
+		var rows := 2 if size.y >= 12.0 else 1
+		for wr in range(rows):
+			var wy := 4.2 + float(wr) * 3.4
+			if wy > size.y - 1.6:
+				continue
+			for wc in range(3):
+				var wx := -size.x * 0.28 + float(wc) * size.x * 0.28
+				_flat_box(body, "WinFrame_%d_%d" % [wr, wc], Vector3(wx, wy, size.z * 0.5 + 0.06), Vector3(1.7, 1.9, 0.14), mat_dark)
+				var lit := rng.randf() < 0.22
+				_flat_box(body, "WinGlass_%d_%d" % [wr, wc], Vector3(wx, wy, size.z * 0.5 + 0.12), Vector3(1.4, 1.6, 0.08), mat_window_lit if lit else mat_window_glass)
+	# v0.5: drain pipe down a front corner on half the buildings.
+	if rng.randf() < 0.5:
+		_flat_box(body, "Pipe", Vector3(size.x * 0.5 - 0.15, size.y * 0.5, size.z * 0.5 + 0.12), Vector3(0.18, size.y, 0.18), mat_pipe)
 	# Rooftop clutter: AC unit or water tank on about half the roofs.
 	if rng.randf() < 0.55:
 		var rw := rng.randf_range(0.8, 1.6)
@@ -335,14 +373,31 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 		var rd := rng.randf_range(0.8, 1.6)
 		var roof_mat := mat_metal if rng.randf() < 0.5 else ProceduralTextures.flat_material(Color(0.30, 0.45, 0.55), 0.8)
 		_flat_box(body, "RoofBox", Vector3(rng.randf_range(-size.x * 0.25, size.x * 0.25), size.y + 0.3 + rh * 0.5, rng.randf_range(-size.z * 0.25, size.z * 0.25)), Vector3(rw, rh, rd), roof_mat)
+	# v0.5: rooftop water tank (cylinder) + TV antenna on some roofs.
+	if rng.randf() < 0.35:
+		var tank := MeshInstance3D.new()
+		tank.name = "WaterTank"
+		tank.mesh = _unit_cyl
+		tank.scale = Vector3(1.3, 1.7, 1.3)
+		tank.position = Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 1.15, rng.randf_range(-size.z * 0.3, size.z * 0.3))
+		tank.material_override = mat_dark
+		body.add_child(tank)
+	if rng.randf() < 0.3:
+		_flat_box(body, "Antenna", Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 1.8, rng.randf_range(-size.z * 0.3, size.z * 0.3)), Vector3(0.08, 3.6, 0.08), mat_pipe)
+		_flat_box(body, "AntennaBar", Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 3.0, rng.randf_range(-size.z * 0.3, size.z * 0.3)), Vector3(1.2, 0.06, 0.06), mat_pipe)
 	# Awning over the street-facing door on low buildings.
 	if size.y < 9.0 and rng.randf() < 0.6:
 		_flat_box(body, "Awning", Vector3(0, 2.6, size.z * 0.5 + 0.7), Vector3(3.2, 0.15, 1.4), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
 	# Balcony on taller buildings (slab + railing).
-	if size.y >= 8.0 and rng.randf() < 0.5:
+	if size.y >= 8.0 and rng.randf() < 0.7:
 		var by := rng.randf_range(3.5, size.y - 1.5)
 		_flat_box(body, "Balcony", Vector3(0, by, size.z * 0.5 + 0.8), Vector3(3.4, 0.18, 1.6), mat_sidewalk)
 		_flat_box(body, "BalconyRail", Vector3(0, by + 0.6, size.z * 0.5 + 1.5), Vector3(3.4, 0.9, 0.08), mat_dark)
+		if size.y >= 14.0:
+			var by2 := by + 3.4
+			if by2 < size.y - 1.0:
+				_flat_box(body, "Balcony2", Vector3(0, by2, size.z * 0.5 + 0.8), Vector3(3.4, 0.18, 1.6), mat_sidewalk)
+				_flat_box(body, "BalconyRail2", Vector3(0, by2 + 0.6, size.z * 0.5 + 1.5), Vector3(3.4, 0.9, 0.08), mat_dark)
 	# Satellite dish on the roof.
 	if rng.randf() < 0.3:
 		var dish := MeshInstance3D.new()
@@ -575,6 +630,10 @@ func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> voi
 		basket.position = Vector3(-0.7 + float(bi) * 0.7, 1.45, 0)
 		basket.material_override = mat_fruit[bi % mat_fruit.size()]
 		stall.add_child(basket)
+	# v0.5: more goods on the counter — stacked fruit piles + a crate.
+	for gi in range(3):
+		_flat_box(stall, "Pile_%d" % gi, Vector3(-0.7 + float(gi) * 0.7, 1.42, 0.35), Vector3(0.45, 0.3, 0.4), mat_fruit[(gi + 1) % mat_fruit.size()])
+	_flat_box(stall, "Crate", Vector3(0.8, 1.35, -0.35), Vector3(0.6, 0.35, 0.5), mat_trunk)
 	_flat_box(stall, "Canopy", Vector3(0, 2.3, 0), Vector3(2.8, 0.12, 1.8), canopy_mat)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -655,6 +714,17 @@ func _lamp(parent: Node, pos: Vector3) -> void:
 	lamp.add_child(pole)
 	_flat_box(lamp, "Arm", Vector3(0.6, 4.9, 0), Vector3(1.3, 0.12, 0.12), mat_dark)
 	_flat_box(lamp, "Head", Vector3(1.2, 4.8, 0), Vector3(0.5, 0.18, 0.3), mat_lamp_glow)
+	# v0.5: real warm light pools at dusk — only for lamps near the
+	# plaza / spawn, where the player actually walks. Six OmniLights
+	# is cheap on a modern phone; lighting every lamp would not be.
+	if Vector2(pos.x, pos.z).length() < 65.0:
+		var light := OmniLight3D.new()
+		light.name = "LampLight"
+		light.position = Vector3(1.2, 4.6, 0)
+		light.light_color = Color(1.0, 0.62, 0.30)
+		light.light_energy = 1.4
+		light.omni_range = 14.0
+		lamp.add_child(light)
 	var col := CollisionShape3D.new()
 	var shape := CylinderShape3D.new()
 	shape.radius = 0.2
@@ -671,6 +741,14 @@ func _car(parent: Node, pos: Vector3, rot_y: float, paint: Material) -> void:
 	car.rotation.y = rot_y
 	_flat_box(car, "Body", Vector3(0, 0.65, 0), Vector3(1.9, 0.7, 4.4), paint)
 	_flat_box(car, "Cabin", Vector3(0, 1.25, -0.2), Vector3(1.7, 0.6, 2.2), mat_dark)
+	# v0.5: windshield (lighter glass, raked), bumpers, headlights.
+	_flat_box(car, "Windshield", Vector3(0, 1.32, 0.95), Vector3(1.6, 0.5, 0.08), mat_window_glass)
+	_flat_box(car, "RearWindow", Vector3(0, 1.32, -1.32), Vector3(1.6, 0.5, 0.08), mat_window_glass)
+	_flat_box(car, "BumperF", Vector3(0, 0.42, 2.22), Vector3(1.9, 0.18, 0.12), mat_dark)
+	_flat_box(car, "BumperR", Vector3(0, 0.42, -2.22), Vector3(1.9, 0.18, 0.12), mat_dark)
+	for hx in [-0.6, 0.6]:
+		_flat_box(car, "Headlight", Vector3(hx, 0.72, 2.21), Vector3(0.4, 0.16, 0.06), mat_headlight)
+		_flat_box(car, "Taillight", Vector3(hx, 0.72, -2.21), Vector3(0.4, 0.14, 0.06), ProceduralTextures.flat_material(Color(0.70, 0.12, 0.10), 0.5))
 	for wx in [-0.85, 0.85]:
 		for wz in [-1.4, 1.4]:
 			var wheel := MeshInstance3D.new()
@@ -680,6 +758,14 @@ func _car(parent: Node, pos: Vector3, rot_y: float, paint: Material) -> void:
 			wheel.position = Vector3(wx, 0.35, wz)
 			wheel.material_override = mat_dark
 			car.add_child(wheel)
+			# Hubcap dot on the outer face.
+			var hub := MeshInstance3D.new()
+			hub.mesh = _unit_cyl
+			hub.scale = Vector3(0.3, 0.27, 0.3)
+			hub.rotation_degrees = Vector3(0, 0, 90)
+			hub.position = Vector3(wx + (0.14 if wx > 0.0 else -0.14), 0.35, wz)
+			hub.material_override = mat_metal
+			car.add_child(hub)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(1.9, 1.6, 4.4)
@@ -865,17 +951,18 @@ func _build_sky_detail() -> void:
 	var disc := MeshInstance3D.new()
 	disc.name = "SunDisc"
 	disc.mesh = _unit_sphere
-	disc.scale = Vector3(14.0, 14.0, 2.0)
-	disc.position = Vector3(170.0, 130.0, -90.0)
+	# v0.5: low, large dusk sun — the GTA IV dusk look.
+	disc.scale = Vector3(20.0, 20.0, 2.0)
+	disc.position = Vector3(190.0, 75.0, -110.0)
 	disc.rotation_degrees = Vector3(0, -35, 0)
 	disc.material_override = mat_sun_disc
 	sky.add_child(disc)
-	for i in range(8):
+	for i in range(11):
 		var cloud := MeshInstance3D.new()
 		cloud.name = "Cloud_%d" % i
 		cloud.mesh = _unit_sphere
-		cloud.scale = Vector3(rng.randf_range(16.0, 30.0), rng.randf_range(2.5, 4.5), rng.randf_range(7.0, 12.0))
-		cloud.position = Vector3(rng.randf_range(-220.0, 220.0), rng.randf_range(85.0, 125.0), rng.randf_range(-220.0, 220.0))
+		cloud.scale = Vector3(rng.randf_range(18.0, 34.0), rng.randf_range(2.5, 4.5), rng.randf_range(7.0, 12.0))
+		cloud.position = Vector3(rng.randf_range(-220.0, 220.0), rng.randf_range(80.0, 120.0), rng.randf_range(-220.0, 220.0))
 		cloud.material_override = mat_cloud
 		sky.add_child(cloud)
 
@@ -887,7 +974,7 @@ func _build_dust() -> void:
 	var dust_node := Node3D.new()
 	dust_node.name = "Dust"
 	add_child(dust_node)
-	for i in range(40):
+	for i in range(60):
 		var mote := MeshInstance3D.new()
 		mote.name = "Mote_%d" % i
 		mote.mesh = _unit_sphere
@@ -897,11 +984,12 @@ func _build_dust() -> void:
 		_dust.append({"node": mote, "base": Vector3(rng.randf_range(-70.0, 70.0), rng.randf_range(0.3, 3.0), rng.randf_range(-70.0, 70.0)), "t": rng.randf_range(0.0, 10.0), "speed": rng.randf_range(0.3, 0.8)})
 
 func _build_sun() -> void:
+	# v0.5: low dusk sun — longer shadows, warmer and dimmer light.
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-52, 38, 0)
-	sun.light_color = Color(1.0, 0.86, 0.66)
-	sun.light_energy = 1.15
+	sun.rotation_degrees = Vector3(-32, 38, 0)
+	sun.light_color = Color(1.0, 0.72, 0.45)
+	sun.light_energy = 0.95
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 220.0
 	add_child(sun)

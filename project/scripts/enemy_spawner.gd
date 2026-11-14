@@ -15,6 +15,14 @@ var _timer: float = 0.0
 var _player: Node3D = null
 var _city: Node3D = null
 var _sound: SoundManager
+# v0.5: set when the player dies — no more waves spawn while the
+# YOU DIED screen is up, and RETRY starts a fresh spawner anyway.
+var stopped := false
+
+func stop_waves() -> void:
+	stopped = true
+	_between_waves = false
+	set_process(false)
 
 func _ready() -> void:
 	_sound = SoundManager.new()
@@ -31,6 +39,8 @@ func _ready() -> void:
 	call_deferred("_start_wave")
 
 func _process(delta: float) -> void:
+	if stopped:
+		return
 	if _between_waves:
 		_timer -= delta
 		if _timer <= 0.0:
@@ -38,6 +48,8 @@ func _process(delta: float) -> void:
 			_start_wave()
 
 func _start_wave() -> void:
+	if stopped:
+		return
 	wave += 1
 	if _sound != null:
 		_sound.play_horn()

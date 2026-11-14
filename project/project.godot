@@ -25,5 +25,5 @@ renderer/rendering_method.mobile="mobile"
 textures/default_filters/use_nearest_mipmap_filter=false
 anti_aliasing/quality/msaa_3d=0
 lights_and_shadows/directional_shadow/size=2048
-lights_and_shadows/directional_shadow/size.mobile=1024
+lights_and_shadows/directional_shadow/size.mobile=2048
 environment/defaults/default_clear_color=Color(0.98, 0.66, 0.34, 1)

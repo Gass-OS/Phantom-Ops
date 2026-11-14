@@ -6,10 +6,10 @@
 [sub_resource type="Environment" id="Environment_menu"]
 # Same Mobile-safe colour environment as the game (v0.2.1 fix).
 background_mode = 1
-background_color = Color(0.53, 0.67, 0.84, 1)
+background_color = Color(0.42, 0.44, 0.55, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.85, 0.82, 0.75, 1)
-ambient_light_energy = 0.9
+ambient_light_color = Color(0.62, 0.60, 0.58, 1)
+ambient_light_energy = 0.75
 tonemap_mode = 2
 tonemap_exposure = 1.0
 glow_enabled = false

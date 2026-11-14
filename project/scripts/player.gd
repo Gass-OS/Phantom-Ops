@@ -29,6 +29,7 @@ var _sound: SoundManager
 var _firing := false
 var _step_timer := 0.0
 var _greet_timer := 2.0
+var _pending_death := false
 var _tracer_mat: StandardMaterial3D
 @onready var camera: Camera3D = $Head/Camera3D
 func _ready() -> void:
@@ -46,6 +47,9 @@ func _ready() -> void:
 	_tracer_mat.emission_energy_multiplier = 2.0
 	_tracer_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_create_viewmodel()
+	# v0.5: death was a dead end — player_died was emitted but nothing
+	# listened, so the player froze with no screen and no way out.
+	player_died.connect(_on_player_died)
 	# Deferred: adding the HUD layer to the root during scene setup
 	# fails ("parent node is busy setting up children").
 	call_deferred("_create_mobile_hud")
@@ -76,7 +80,14 @@ func _create_mobile_hud() -> void:
 	mobile_hud.pause_pressed.connect(_on_pause)
 	mobile_hud.resume_pressed.connect(_on_resume)
 	mobile_hud.menu_pressed.connect(_on_menu)
+	if mobile_hud.has_signal("retry_pressed"):
+		mobile_hud.retry_pressed.connect(_on_retry)
+	if mobile_hud.has_signal("death_menu_pressed"):
+		mobile_hud.death_menu_pressed.connect(_on_menu)
 	mobile_hud.sprint_changed.connect(_on_sprint)
+	if _pending_death:
+		_pending_death = false
+		_show_death_overlay()
 	mobile_hud.sound_toggled.connect(_on_sound_toggled)
 	if mobile_hud.has_signal("voices_toggled"):
 		mobile_hud.voices_toggled.connect(_on_voices_toggled)
@@ -143,6 +154,13 @@ func _create_viewmodel() -> void:
 		[Vector3(0, 0.02, -0.66), Vector3(0.06, 0.06, 0.14), metal],
 		# Left hand on the handguard.
 		[Vector3(0, -0.08, -0.42), Vector3(0.07, 0.06, 0.10), skin_mat],
+		# v0.5: top rail with slots, charging handle, front sight post,
+		# butt pad, magazine release — the rifle stops reading flat.
+		[Vector3(0, 0.075, -0.30), Vector3(0.06, 0.02, 0.42), metal],
+		[Vector3(0.05, 0.03, 0.10), Vector3(0.04, 0.02, 0.08), metal],
+		[Vector3(0, 0.10, -0.55), Vector3(0.02, 0.06, 0.02), metal],
+		[Vector3(0, -0.01, 0.45), Vector3(0.09, 0.13, 0.03), grip_mat],
+		[Vector3(0.045, -0.06, 0.0), Vector3(0.02, 0.04, 0.05), metal],
 	]
 	for p in parts:
 		var mi := MeshInstance3D.new()
@@ -346,6 +364,47 @@ func _on_menu() -> void:
 	if is_instance_valid(GameManager):
 		GameManager.reset_game()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# v0.5 death flow: stop firing, stop the waves, play the death sting,
+# show YOU DIED with the final score. Enemies stop attacking the
+# corpse via the is_dead check in enemy_ai.gd.
+func _on_player_died() -> void:
+	_firing = false
+	if _sound != null:
+		_sound.play_death()
+	var spawner := get_parent().get_node_or_null("EnemySpawner")
+	if spawner != null and spawner.has_method("stop_waves"):
+		spawner.stop_waves()
+	_show_death_overlay()
+
+func _show_death_overlay() -> void:
+	if mobile_hud == null:
+		_pending_death = true
+		return
+	if not mobile_hud.has_method("show_death"):
+		return
+	var wave := 1
+	var spawner := get_parent().get_node_or_null("EnemySpawner")
+	if spawner != null:
+		wave = int(spawner.get("wave"))
+	var final_score := 0
+	var final_kills := 0
+	if is_instance_valid(GameManager):
+		final_score = GameManager.score
+		final_kills = GameManager.kills
+	mobile_hud.show_death(final_score, final_kills, wave)
+
+func _on_retry() -> void:
+	# Reload the game cleanly. The root HUD layer is freed here (and
+	# again in _exit_tree); the new Player rebuilds a fresh one, so no
+	# stacked HUDs — the v0.3 fix still holds.
+	if mobile_hud != null:
+		var layer: Node = mobile_hud.get_parent()
+		if layer != null:
+			layer.queue_free()
+	if is_instance_valid(GameManager):
+		GameManager.reset_game()
+	get_tree().change_scene_to_file("res://scenes/main_game.tscn")
 func _update_hud_all() -> void:
 	if mobile_hud == null:
 		return
