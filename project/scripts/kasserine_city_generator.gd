@@ -53,6 +53,9 @@ var mat_tyre: StandardMaterial3D
 var mat_bollard: StandardMaterial3D
 var mat_cloth: Array[StandardMaterial3D] = []
 var mat_fruit: Array[StandardMaterial3D] = []
+var mat_dome: StandardMaterial3D
+var mat_gold: StandardMaterial3D
+var mat_mosque: StandardMaterial3D
 var _dust: Array = []
 
 func _ready() -> void:
@@ -135,21 +138,32 @@ func _setup_materials() -> void:
 		mat_cloth.append(ProceduralTextures.flat_material(c, 0.95))
 	for c in [Color(0.85, 0.45, 0.10), Color(0.45, 0.65, 0.20), Color(0.75, 0.20, 0.20)]:
 		mat_fruit.append(ProceduralTextures.flat_material(c, 0.9))
+	mat_dome = ProceduralTextures.flat_material(Color(0.15, 0.45, 0.40), 0.6)
+	mat_gold = ProceduralTextures.flat_material(Color(0.88, 0.68, 0.28), 0.35)
+	mat_gold.metallic = 0.6
+	mat_mosque = ProceduralTextures.geometric_material()
 
 # ---------------------------------------------------------------- build
 
 func _build_city() -> void:
 	_build_ground()
+	_reserve_mosque()
 	_build_roads()
 	_build_blocks_and_buildings()
 	_build_plaza_and_market()
 	_build_props()
 	_build_checkpoint()
 	_build_landmark_and_horizon()
+	_build_mosque()
 	_build_sky_detail()
 	_build_sun()
 	_build_dust()
 	_collect_spawn_points()
+
+# v0.4: reserve the mosque plot (south-west block) before any building
+# is placed, so no regular building overlaps the mosque or courtyard.
+func _reserve_mosque() -> void:
+	occupied.append(Rect2(-92.0, 49.0, 34.0, 42.0))
 
 func _process(delta: float) -> void:
 	# Drifting dust motes near the ground (cheap CPU quads, no particles).
@@ -345,7 +359,154 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 		_flat_box(body, "LaundryLine", Vector3(0, ly, 0), Vector3(size.x * 0.7, 0.04, 0.04), mat_dark)
 		for ci in range(3):
 			_flat_box(body, "Cloth_%d" % ci, Vector3(-size.x * 0.2 + float(ci) * size.x * 0.2, ly - 0.35, 0), Vector3(0.9, 0.7, 0.05), mat_cloth[rng.randi_range(0, mat_cloth.size() - 1)])
+	# v0.4: Islamic-style low buildings — small dome + arched doorway.
+	if size.y < 7.0 and rng.randf() < 0.35:
+		var dome := MeshInstance3D.new()
+		dome.name = "SmallDome"
+		dome.mesh = _unit_sphere
+		dome.scale = Vector3(size.x * 0.42, size.x * 0.26, size.x * 0.42)
+		dome.position = Vector3(0, size.y + 0.3, 0)
+		dome.material_override = mat_dome
+		body.add_child(dome)
+		var finial := MeshInstance3D.new()
+		finial.name = "Finial"
+		finial.mesh = _unit_sphere
+		finial.scale = Vector3(0.3, 0.3, 0.3)
+		finial.position = Vector3(0, size.y + 0.3 + size.x * 0.26, 0)
+		finial.material_override = mat_gold
+		body.add_child(finial)
+	if size.y < 7.0 and rng.randf() < 0.4:
+		var arch := MeshInstance3D.new()
+		arch.name = "Arch"
+		arch.mesh = _unit_sphere
+		arch.scale = Vector3(2.0, 1.1, 0.5)
+		arch.position = Vector3(0, 2.9, size.z * 0.5 + 0.05)
+		arch.material_override = mat_dome
+		body.add_child(arch)
 	parent.add_child(body)
+
+# v0.4: the mosque of Kasserine — prayer hall with geometric-pattern
+# walls, big teal dome + small dome, two minarets, courtyard with
+# colonnade and hanging lanterns. South-west block (-75, 75), reserved
+# above; it never blocks a road or the player spawn.
+func _build_mosque() -> void:
+	var mosque := Node3D.new()
+	mosque.name = "Mosque"
+	mosque.position = Vector3(-75, 0, 75)
+	add_child(mosque)
+	# Courtyard floor (north side, facing the plaza) + colonnade.
+	_flat_box(mosque, "Courtyard", Vector3(0, 0.06, -14), Vector3(30, 0.12, 20), mat_plaza)
+	for cx in [-12.0, -6.0, 0.0, 6.0, 12.0]:
+		var col := MeshInstance3D.new()
+		col.name = "Column"
+		col.mesh = _unit_cyl
+		col.scale = Vector3(0.5, 3.5, 0.5)
+		col.position = Vector3(cx, 1.75, -22)
+		col.material_override = mat_white
+		mosque.add_child(col)
+	_flat_box(mosque, "Colonnade", Vector3(0, 3.7, -22), Vector3(27, 0.5, 0.9), mat_white)
+	# Hanging lanterns along the colonnade (emissive, no lights).
+	for lx in [-9.0, -3.0, 3.0, 9.0]:
+		var cord := MeshInstance3D.new()
+		cord.mesh = _unit_cyl
+		cord.scale = Vector3(0.05, 0.8, 0.05)
+		cord.position = Vector3(lx, 3.1, -22)
+		cord.material_override = mat_dark
+		mosque.add_child(cord)
+		var lantern := MeshInstance3D.new()
+		lantern.name = "Lantern"
+		lantern.mesh = _unit_sphere
+		lantern.scale = Vector3(0.5, 0.6, 0.5)
+		lantern.position = Vector3(lx, 2.5, -22)
+		lantern.material_override = mat_lamp_glow
+		mosque.add_child(lantern)
+	# Prayer hall.
+	var hall := StaticBody3D.new()
+	hall.name = "PrayerHall"
+	hall.position = Vector3(0, 0, 4)
+	mosque.add_child(hall)
+	var hall_mesh := MeshInstance3D.new()
+	var hall_box := BoxMesh.new()
+	hall_box.size = Vector3(26, 9, 16)
+	hall_box.material = mat_mosque
+	hall_mesh.mesh = hall_box
+	hall_mesh.position.y = 4.5
+	hall.add_child(hall_mesh)
+	var hall_col := CollisionShape3D.new()
+	var hall_shape := BoxShape3D.new()
+	hall_shape.size = Vector3(26, 9, 16)
+	hall_col.shape = hall_shape
+	hall_col.position.y = 4.5
+	hall.add_child(hall_col)
+	occupied.append(Rect2(-75 - 13, 75 + 4 - 8, 26, 16))
+	# Arched doorway (front, facing the courtyard / plaza).
+	_flat_box(hall, "Door", Vector3(0, 2.25, -8.1), Vector3(3.0, 4.5, 0.4), mat_dark)
+	var arch := MeshInstance3D.new()
+	arch.name = "DoorArch"
+	arch.mesh = _unit_sphere
+	arch.scale = Vector3(3.4, 1.8, 0.6)
+	arch.position = Vector3(0, 4.5, -8.1)
+	arch.material_override = mat_dome
+	hall.add_child(arch)
+	# Big dome + gold crescent finial (torus ring + sphere).
+	var dome := MeshInstance3D.new()
+	dome.name = "Dome"
+	dome.mesh = _unit_sphere
+	dome.scale = Vector3(10.0, 6.0, 10.0)
+	dome.position = Vector3(0, 9.0, 4)
+	dome.material_override = mat_dome
+	mosque.add_child(dome)
+	var finial := MeshInstance3D.new()
+	finial.name = "Crescent"
+	finial.mesh = _unit_sphere
+	finial.scale = Vector3(0.6, 0.6, 0.6)
+	finial.position = Vector3(0, 13.2, 4)
+	finial.material_override = mat_gold
+	mosque.add_child(finial)
+	var ring := MeshInstance3D.new()
+	ring.name = "CrescentRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.35
+	torus.outer_radius = 0.6
+	# Material on the mesh itself (see citizen.gd _part): avoids a
+	# headless dummy-server error from material_override.
+	torus.material = mat_gold
+	ring.mesh = torus
+	ring.position = Vector3(0, 12.4, 4)
+	mosque.add_child(ring)
+	# Small dome on the hall's east wing.
+	var small_dome := MeshInstance3D.new()
+	small_dome.name = "SmallDome"
+	small_dome.mesh = _unit_sphere
+	small_dome.scale = Vector3(5.0, 3.0, 5.0)
+	small_dome.position = Vector3(10, 9.0, 4)
+	small_dome.material_override = mat_dome
+	mosque.add_child(small_dome)
+	# Two minarets at the front corners.
+	for mx in [-13.0, 13.0]:
+		var minaret := Node3D.new()
+		minaret.name = "Minaret"
+		minaret.position = Vector3(mx, 0, -6)
+		mosque.add_child(minaret)
+		var shaft := MeshInstance3D.new()
+		shaft.mesh = _unit_cyl
+		shaft.scale = Vector3(2.0, 18.0, 2.0)
+		shaft.position.y = 9.0
+		shaft.material_override = mat_white
+		minaret.add_child(shaft)
+		var balcony := MeshInstance3D.new()
+		balcony.mesh = _unit_cyl
+		balcony.scale = Vector3(3.0, 0.7, 3.0)
+		balcony.position.y = 15.0
+		balcony.material_override = mat_dark
+		minaret.add_child(balcony)
+		var cap := MeshInstance3D.new()
+		cap.mesh = _cone
+		cap.scale = Vector3(2.6, 3.5, 2.6)
+		cap.position.y = 19.5
+		cap.material_override = mat_dome
+		minaret.add_child(cap)
+	print("Phantom Ops: mosque built at (-75, 75)")
 
 func _build_plaza_and_market() -> void:
 	var plaza := Node3D.new()
@@ -360,6 +521,25 @@ func _build_plaza_and_market() -> void:
 		if pos.distance_to(Vector3(0, 0, 10)) < 6.0:
 			continue
 		_stall(plaza, pos, ang, mat_canopy[i % mat_canopy.size()])
+	# v0.4: shop signs (Label3D, Latin names — the fallback font has
+	# no Arabic glyphs for procedural text, so Latin only).
+	var shop_names := ["SOUK", "CAFE", "BAKERY", "PHARMACIE", "BOULANGERIE", "EPICERIE"]
+	for i in range(6):
+		var ang2 := TAU * float(i) / 6.0 + 0.3
+		var spos := Vector3(cos(ang2) * 18.5, 0, sin(ang2) * 18.5)
+		if spos.distance_to(Vector3(0, 0, 10)) < 6.0:
+			continue
+		var sign := Label3D.new()
+		sign.name = "ShopSign_%d" % i
+		sign.text = shop_names[i]
+		sign.font_size = 64
+		sign.pixel_size = 0.01
+		sign.modulate = Color(1.0, 0.85, 0.45)
+		sign.outline_size = 10
+		sign.outline_modulate = Color(0.05, 0.05, 0.08)
+		sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sign.position = spos + Vector3(0, 3.1, 0)
+		plaza.add_child(sign)
 	# Benches facing the square.
 	for i in range(8):
 		var ang := TAU * float(i) / 8.0

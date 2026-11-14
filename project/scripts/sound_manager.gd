@@ -8,8 +8,12 @@ class_name SoundManager
 
 const MIX_RATE := 22050
 static var sound_on := true
+## v0.4: spoken greetings are best-effort only (see greet()).
+static var voices_on := true
 static var _cache: Dictionary = {}
+static var _last_greet_msec := 0
 var _wind_player: AudioStreamPlayer = null
+var _murmur_player: AudioStreamPlayer = null
 
 # ---------------------------------------------------------------- helpers
 static func _pack(samples: PackedFloat32Array) -> AudioStreamWAV:
@@ -140,6 +144,28 @@ static func wind_stream() -> AudioStreamWAV:
 		s.loop_end = int(MIX_RATE * 2.0)
 		return s)
 
+## v0.4: soft market murmur — low smoothed noise with quiet voice-like
+## tone blips, looped. No real speech, no prayer audio.
+static func murmur_stream() -> AudioStreamWAV:
+	return _cached_stream("murmur", func() -> AudioStreamWAV:
+		var base := _noise(3.0, 0.10, 0.0, 0.96)
+		var voices := _concat([
+			_tone(190.0, 0.25, 0.10, 6.0), _silence(0.3),
+			_tone(240.0, 0.2, 0.08, 6.0), _silence(0.5),
+			_tone(160.0, 0.3, 0.09, 6.0), _silence(0.4),
+			_tone(280.0, 0.18, 0.07, 6.0), _silence(0.6),
+			_tone(210.0, 0.22, 0.08, 6.0), _silence(0.32)])
+		var s := _mix(base, voices)
+		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		s.loop_begin = 0
+		s.loop_end = int(MIX_RATE * 3.0)
+		return s)
+
+## v0.4: drone whoosh — a rising/falling noise sweep for the intro.
+static func whoosh_stream() -> AudioStreamWAV:
+	return _cached_stream("whoosh", func() -> AudioStreamWAV:
+		return _noise(1.4, 0.5, 2.0, 0.55))
+
 # ---------------------------------------------------------------- playback
 func _play(stream: AudioStreamWAV, vol_db: float = 0.0) -> void:
 	if not sound_on:
@@ -182,6 +208,47 @@ func play_horn() -> void:
 
 func play_step() -> void:
 	_play(step_stream(), -12.0)
+
+func play_whoosh() -> void:
+	_play(whoosh_stream(), -8.0)
+
+func start_murmur() -> void:
+	if not is_inside_tree():
+		return
+	if _murmur_player != null:
+		if sound_on and not _murmur_player.playing:
+			_murmur_player.play()
+		return
+	_murmur_player = AudioStreamPlayer.new()
+	_murmur_player.stream = murmur_stream()
+	_murmur_player.volume_db = -20.0
+	add_child(_murmur_player)
+	if sound_on:
+		_murmur_player.play()
+
+func stop_murmur() -> void:
+	if _murmur_player != null:
+		_murmur_player.queue_free()
+		_murmur_player = null
+
+## v0.4: Tunisian greeting via the OS text-to-speech, best-effort only.
+## Guarded by has_feature() so a device / headless run without TTS
+## simply stays silent — it can never crash the game. Throttled to one
+## greeting every 8 seconds. Lines are plain greetings only.
+static func greet() -> void:
+	if not sound_on or not voices_on:
+		return
+	if Time.get_ticks_msec() - _last_greet_msec < 8000:
+		return
+	_last_greet_msec = Time.get_ticks_msec()
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_TEXT_TO_SPEECH):
+		return
+	var lines := ["Salam", "Marhaba", "Salam alaykum", "Ahla wa sahla"]
+	# Godot 4.2 names the call tts_speak (tts() does not exist).
+	DisplayServer.tts_speak(lines[randi() % lines.size()], "", 50, 1.0, 1.0, 0, false)
+
+static func set_voices_on(v: bool) -> void:
+	voices_on = v
 
 func start_wind() -> void:
 	if not is_inside_tree():

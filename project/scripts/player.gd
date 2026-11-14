@@ -28,6 +28,7 @@ var _muzzle_light: OmniLight3D
 var _sound: SoundManager
 var _firing := false
 var _step_timer := 0.0
+var _greet_timer := 2.0
 var _tracer_mat: StandardMaterial3D
 @onready var camera: Camera3D = $Head/Camera3D
 func _ready() -> void:
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_sound.name = "SoundManager"
 	add_child(_sound)
 	_sound.start_wind()
+	_sound.start_murmur()
 	_tracer_mat = StandardMaterial3D.new()
 	_tracer_mat.albedo_color = Color(1.0, 0.85, 0.4)
 	_tracer_mat.emission_enabled = true
@@ -76,8 +78,12 @@ func _create_mobile_hud() -> void:
 	mobile_hud.menu_pressed.connect(_on_menu)
 	mobile_hud.sprint_changed.connect(_on_sprint)
 	mobile_hud.sound_toggled.connect(_on_sound_toggled)
+	if mobile_hud.has_signal("voices_toggled"):
+		mobile_hud.voices_toggled.connect(_on_voices_toggled)
 	if mobile_hud.has_method("set_sound_on"):
 		mobile_hud.set_sound_on(SoundManager.sound_on)
+	if mobile_hud.has_method("set_voices_on"):
+		mobile_hud.set_voices_on(SoundManager.voices_on)
 	_update_hud_all()
 
 func _on_fire_held_changed(v: bool) -> void:
@@ -89,8 +95,13 @@ func _on_sound_toggled(v: bool) -> void:
 	SoundManager.set_sound_on(v)
 	if _sound != null and not v:
 		_sound.stop_wind()
+		_sound.stop_murmur()
 	elif _sound != null and v:
 		_sound.start_wind()
+		_sound.start_murmur()
+
+func _on_voices_toggled(v: bool) -> void:
+	SoundManager.set_voices_on(v)
 func _on_score_changed(score: int, kills: int) -> void:
 	if mobile_hud != null and mobile_hud.has_method("set_score"):
 		mobile_hud.set_score(score, kills)
@@ -178,6 +189,12 @@ func _process(delta: float) -> void:
 		_cooldown_timer -= delta
 	if _firing and not is_paused and not is_dead:
 		_on_mobile_fire()
+	# v0.4: greet a nearby civilian (best-effort TTS, throttled inside
+	# SoundManager.greet(); silent when TTS is unavailable).
+	_greet_timer -= delta
+	if _greet_timer <= 0.0:
+		_greet_timer = 1.0
+		_check_citizen_greeting()
 	if _flash_timer > 0.0:
 		_flash_timer -= delta
 		if _flash_timer <= 0.0:
@@ -196,6 +213,20 @@ func _process(delta: float) -> void:
 		_viewmodel.position.z = -0.5 + _recoil * 0.12
 	if mobile_hud != null and mobile_hud.has_method("set_compass"):
 		mobile_hud.set_compass(rotation.y)
+func _check_citizen_greeting() -> void:
+	if is_paused or is_dead:
+		return
+	var tree := get_tree()
+	if tree == null:
+		return
+	for c in tree.get_nodes_in_group("civilian"):
+		var civ := c as Node3D
+		if civ == null:
+			continue
+		if civ.global_position.distance_to(global_position) < 6.0:
+			SoundManager.greet()
+			return
+
 func _on_mobile_move(v: Vector2) -> void:
 	mobile_move = v
 func _on_mobile_look(v: Vector2) -> void:
@@ -231,11 +262,20 @@ func _on_mobile_fire() -> void:
 	q.exclude = [self]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var end_point := target
+	# v0.4: civilians are NEVER targets. They are in group "civilian"
+	# and have no take_damage, but check the group explicitly: a hit
+	# on a civilian deals no damage, plays no hit sound, shows no
+	# hitmarker and leaves no impact puff — the shot simply passes.
+	var hit_civilian := false
 	if not hit.is_empty():
-		end_point = hit.position
-		_spawn_impact_puff(end_point)
+		var collider := hit.collider as Node
+		if collider != null and collider.is_in_group("civilian"):
+			hit_civilian = true
+		else:
+			end_point = hit.position
+			_spawn_impact_puff(end_point)
 	_spawn_tracer(camera.global_position - camera.global_transform.basis.z * 0.8, end_point)
-	if not hit.is_empty() and hit.collider.has_method("take_damage"):
+	if not hit_civilian and not hit.is_empty() and hit.collider.has_method("take_damage"):
 		hit.collider.take_damage(25.0)
 		if _sound != null:
 			_sound.play_hit()

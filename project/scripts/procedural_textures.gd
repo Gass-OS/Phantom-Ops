@@ -115,9 +115,10 @@ static func facade_texture(index: int) -> ImageTexture:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 500 + index * 17
 	var n := _noise(500 + index * 17)
-	var img := Image.create(128, 192, false, Image.FORMAT_RGBA8)
-	for y in range(192):
-		for x in range(128):
+	# v0.4: 256x256 (was 128x192) — sharper facades on modern phones.
+	var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+	for y in range(256):
+		for x in range(256):
 			var v: float = n.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
 			var s := 0.94 + v * 0.10
 			img.set_pixel(x, y, Color(base.r * s, base.g * s, base.b * s))
@@ -126,35 +127,107 @@ static func facade_texture(index: int) -> ImageTexture:
 	var rows := 4
 	for r in range(rows):
 		for c in range(cols):
-			var wx := 12 + c * 38
-			var wy := 14 + r * 42
+			var wx := 24 + c * 76
+			var wy := 16 + r * 56
 			# Frame + glass + highlight.
-			_fill_rect(img, wx - 2, wy - 2, 24, 30, Color(0.25, 0.22, 0.20))
-			_fill_rect(img, wx, wy, 20, 26, Color(0.12, 0.16, 0.22))
-			_fill_rect(img, wx + 2, wy + 2, 7, 9, Color(0.45, 0.55, 0.65))
+			_fill_rect(img, wx - 4, wy - 4, 48, 60, Color(0.25, 0.22, 0.20))
+			_fill_rect(img, wx, wy, 40, 52, Color(0.12, 0.16, 0.22))
+			_fill_rect(img, wx + 4, wy + 4, 14, 18, Color(0.45, 0.55, 0.65))
 			# Cross mullion.
-			_fill_rect(img, wx + 9, wy, 2, 26, Color(0.25, 0.22, 0.20))
-			_fill_rect(img, wx, wy + 12, 20, 2, Color(0.25, 0.22, 0.20))
+			_fill_rect(img, wx + 18, wy, 4, 52, Color(0.25, 0.22, 0.20))
+			_fill_rect(img, wx, wy + 24, 40, 4, Color(0.25, 0.22, 0.20))
 			# Side shutters on about half the windows.
 			if rng.randf() < 0.5:
 				var sc := Color(0.35, 0.45, 0.35) if rng.randf() < 0.5 else Color(0.45, 0.38, 0.28)
-				_fill_rect(img, wx - 8, wy, 5, 26, sc)
-				_fill_rect(img, wx + 23, wy, 5, 26, sc)
+				_fill_rect(img, wx - 16, wy, 10, 52, sc)
+				_fill_rect(img, wx + 46, wy, 10, 52, sc)
 			# AC box under some windows.
 			if rng.randf() < 0.35:
-				_fill_rect(img, wx + 2, wy + 28, 16, 8, Color(0.70, 0.70, 0.68))
+				_fill_rect(img, wx + 4, wy + 56, 32, 16, Color(0.70, 0.70, 0.68))
 		# Balcony rail line on the second row.
 		if r == 1:
-			_fill_rect(img, 8, 14 + r * 42 + 34, 112, 3, Color(0.20, 0.18, 0.16))
-			for bx in range(8, 120, 12):
-				_fill_rect(img, bx, 14 + r * 42 + 34, 2, 8, Color(0.20, 0.18, 0.16))
+			_fill_rect(img, 16, 16 + r * 56 + 68, 224, 6, Color(0.20, 0.18, 0.16))
+			for bx in range(16, 240, 24):
+				_fill_rect(img, bx, 16 + r * 56 + 68, 4, 16, Color(0.20, 0.18, 0.16))
 	# Ground-floor door with frame + step.
-	_fill_rect(img, 50, 166, 28, 26, Color(0.30, 0.22, 0.16))
-	_fill_rect(img, 54, 170, 20, 22, Color(0.20, 0.15, 0.11))
-	_fill_rect(img, 48, 190, 32, 2, Color(0.55, 0.50, 0.44))
+	_fill_rect(img, 100, 228, 56, 28, Color(0.30, 0.22, 0.16))
+	_fill_rect(img, 108, 232, 40, 24, Color(0.20, 0.15, 0.11))
+	_fill_rect(img, 96, 252, 64, 4, Color(0.55, 0.50, 0.44))
 	var tex := ImageTexture.create_from_image(img)
 	_cache[key] = tex
 	return tex
+
+## Islamic geometric pattern (8-pointed stars, geometric only — no text,
+## no calligraphy). Used on the mosque walls.
+static func _draw_line(img: Image, x0: int, y0: int, x1: int, y1: int, col: Color) -> void:
+	var dx := absi(x1 - x0)
+	var dy := -absi(y1 - y0)
+	var sx := 1 if x0 < x1 else -1
+	var sy := 1 if y0 < y1 else -1
+	var err := dx + dy
+	var x := x0
+	var y := y0
+	while true:
+		if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
+			img.set_pixel(x, y, col)
+		if x == x1 and y == y1:
+			break
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x += sx
+		if e2 <= dx:
+			err += dx
+			y += sy
+
+static func _draw_star(img: Image, cx: int, cy: int, r: int, col: Color) -> void:
+	# 8-pointed star = two squares, one rotated 45 degrees.
+	var pts: Array[Vector2i] = []
+	for k in range(4):
+		var a := TAU * float(k) / 4.0
+		pts.append(Vector2i(cx + int(cos(a) * r), cy + int(sin(a) * r)))
+	for k in range(4):
+		_draw_line(img, pts[k].x, pts[k].y, pts[(k + 1) % 4].x, pts[(k + 1) % 4].y, col)
+	var pts2: Array[Vector2i] = []
+	for k in range(4):
+		var a := TAU * float(k) / 4.0 + PI / 4.0
+		pts2.append(Vector2i(cx + int(cos(a) * r), cy + int(sin(a) * r)))
+	for k in range(4):
+		_draw_line(img, pts2[k].x, pts2[k].y, pts2[(k + 1) % 4].x, pts2[(k + 1) % 4].y, col)
+	_draw_line(img, cx - r, cy, cx + r, cy, col)
+	_draw_line(img, cx, cy - r, cx, cy + r, col)
+
+static func geometric_pattern_texture() -> ImageTexture:
+	if _cache.has("geometric"):
+		return _cache["geometric"]
+	var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.13, 0.36, 0.38))
+	var gold := Color(0.88, 0.68, 0.28)
+	var light := Color(0.92, 0.88, 0.78)
+	# Border frame.
+	_draw_line(img, 6, 6, 249, 6, gold)
+	_draw_line(img, 6, 249, 249, 249, gold)
+	_draw_line(img, 6, 6, 6, 249, gold)
+	_draw_line(img, 249, 6, 249, 249, gold)
+	_draw_line(img, 14, 14, 241, 14, light)
+	_draw_line(img, 14, 241, 241, 241, light)
+	_draw_line(img, 14, 14, 14, 241, light)
+	_draw_line(img, 241, 14, 241, 241, light)
+	# 3x3 grid of 8-pointed stars with diamond centres.
+	for gy in range(3):
+		for gx in range(3):
+			var cx := 64 + gx * 64
+			var cy := 64 + gy * 64
+			_draw_star(img, cx, cy, 24, gold)
+			_fill_rect(img, cx - 4, cy - 4, 8, 8, light)
+	var tex := ImageTexture.create_from_image(img)
+	_cache["geometric"] = tex
+	return tex
+
+static func geometric_material() -> StandardMaterial3D:
+	if not _cache.has("mat_geometric"):
+		_cache["mat_geometric"] = _material(geometric_pattern_texture(), Vector3(2, 1, 1), 0.9)
+	return _cache["mat_geometric"]
 
 static func _material(tex: ImageTexture, uv_scale: Vector3, rough: float = 0.9) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

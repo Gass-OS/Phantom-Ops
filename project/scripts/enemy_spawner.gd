@@ -74,6 +74,8 @@ func _spawn_enemy(pos: Vector3) -> void:
 	enemy.add_child(col)
 	enemy.position = pos + Vector3(0, 1.0, 0)
 	add_child(enemy)
+	# Citizens look for group "zombie" to flee from.
+	enemy.add_to_group("zombie")
 	# EnemyAI._ready() builds its visible body; set the target after add.
 	enemy.target = _player
 	if enemy.has_signal("enemy_died"):

@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/kasserine_city_generator.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/enemy_spawner.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/citizen_spawner.gd" id="4"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -51,3 +52,6 @@ far = 500.0
 
 [node name="EnemySpawner" type="Node3D" parent="."]
 script = ExtResource("3")
+
+[node name="CitizenSpawner" type="Node3D" parent="."]
+script = ExtResource("4")

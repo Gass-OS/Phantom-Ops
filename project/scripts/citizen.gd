@@ -56,13 +56,18 @@ func _lane_point(along: float) -> Vector3:
         return Vector3(along, 0.9, lane)
     return Vector3(lane, 0.9, along)
 
-func _part(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+func _part(mesh: PrimitiveMesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
     var mi = MeshInstance3D.new()
     mi.mesh = mesh
     var mat = StandardMaterial3D.new()
     mat.albedo_color = color
     mat.roughness = 1.0
-    mi.material_override = mat
+    # v0.4: set the material on the PrimitiveMesh itself, not
+    # material_override on the instance. material_override makes the
+    # headless dummy rendering server query a surface count on a mesh
+    # whose RID does not exist yet (one engine error per part, 216 in
+    # total for 24 citizens). On a real phone it renders the same.
+    mesh.material = mat
     mi.position = pos
     parent.add_child(mi)
     return mi

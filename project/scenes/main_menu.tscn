@@ -1,83 +1,122 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/kasserine_city_generator.gd" id="2"]
 
-[sub_resource type="Gradient" id="Gradient_menu"]
-offsets = PackedFloat32Array(0, 0.55, 1)
-colors = PackedColorArray(0.98, 0.62, 0.28, 1, 0.45, 0.25, 0.28, 1, 0.07, 0.06, 0.10, 1)
+[sub_resource type="Environment" id="Environment_menu"]
+# Same Mobile-safe colour environment as the game (v0.2.1 fix).
+background_mode = 1
+background_color = Color(0.53, 0.67, 0.84, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.85, 0.82, 0.75, 1)
+ambient_light_energy = 0.9
+tonemap_mode = 2
+tonemap_exposure = 1.0
+glow_enabled = false
+fog_enabled = false
 
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_menu"]
-gradient = SubResource("Gradient_menu")
-width = 512
-height = 512
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
+[node name="MainMenu" type="Node3D"]
+script = ExtResource("1")
 
-[node name="MainMenu" type="Control"]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="City" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="MenuCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 58, 24, 0)
+current = true
+fov = 65.0
+near = 0.1
+far = 600.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="UI" type="Control" parent="CanvasLayer"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-script = ExtResource("1")
+mouse_filter = 2
 
-[node name="BG" type="TextureRect" parent="."]
+[node name="BG" type="ColorRect" parent="CanvasLayer/UI"]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-texture = SubResource("GradientTexture2D_menu")
-stretch_mode = 1
+color = Color(0.07, 0.06, 0.1, 1)
 
-[node name="Shade" type="ColorRect" parent="."]
+[node name="Shade" type="ColorRect" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.05, 0.04, 0.03, 0.35)
+mouse_filter = 2
 
-[node name="Title" type="Label" parent="."]
+[node name="Title" type="Label" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -500.0
-offset_top = 90.0
-offset_right = 500.0
-offset_bottom = 190.0
+offset_left = -600.0
+offset_top = 60.0
+offset_right = 600.0
+offset_bottom = 180.0
 theme_override_colors/font_color = Color(1, 0.93, 0.8, 1)
-theme_override_font_sizes/font_size = 72
+theme_override_font_sizes/font_size = 96
 text = "PHANTOM OPS"
 horizontal_alignment = 1
+mouse_filter = 2
 
-[node name="Subtitle" type="Label" parent="."]
+[node name="Subtitle" type="Label" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -350.0
-offset_top = 195.0
-offset_right = 350.0
-offset_bottom = 235.0
+offset_left = -400.0
+offset_top = 185.0
+offset_right = 400.0
+offset_bottom = 230.0
 theme_override_colors/font_color = Color(1, 0.85, 0.6, 1)
-theme_override_font_sizes/font_size = 22
-text = "KASSERINE  —  OPERATIONS"
+theme_override_font_sizes/font_size = 28
+text = "KASSERINE  —  TUNISIA"
 horizontal_alignment = 1
+mouse_filter = 2
 
-[node name="Version" type="Label" parent="."]
+[node name="Version" type="Label" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -250.0
-offset_top = 240.0
-offset_right = 250.0
-offset_bottom = 270.0
+offset_left = -400.0
+offset_top = 235.0
+offset_right = 400.0
+offset_bottom = 265.0
 theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.85)
-theme_override_font_sizes/font_size = 16
-text = "v0.2 — Kasserine Rebuilt"
+theme_override_font_sizes/font_size = 18
+text = "v0.4 — Kasserine, Tunisia  •  AYMEN — PHANTOM"
 horizontal_alignment = 1
+mouse_filter = 2
 
-[node name="Play" type="Button" parent="."]
+[node name="Play" type="Button" parent="CanvasLayer/UI"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -170.0
+offset_top = -50.0
+offset_right = 170.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 32
+text = "▶  DEPLOY"
+
+[node name="HowTo" type="Button" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -85,24 +124,88 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -150.0
-offset_top = -30.0
+offset_top = 70.0
 offset_right = 150.0
-offset_bottom = 40.0
-theme_override_font_sizes/font_size = 28
-text = "DEPLOY"
+offset_bottom = 150.0
+theme_override_font_sizes/font_size = 24
+text = "HOW TO PLAY"
 
-[node name="Controls" type="Label" parent="."]
+[node name="Sound" type="Button" parent="CanvasLayer/UI"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = 170.0
+offset_right = 150.0
+offset_bottom = 250.0
+theme_override_font_sizes/font_size = 24
+text = "SOUND: ON"
+
+[node name="Controls" type="Label" parent="CanvasLayer/UI"]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -450.0
-offset_top = -90.0
-offset_right = 450.0
-offset_bottom = -50.0
+offset_left = -500.0
+offset_top = -70.0
+offset_right = 500.0
+offset_bottom = -30.0
 theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.85)
-theme_override_font_sizes/font_size = 16
-text = "Left thumb — move  •  Right thumb — look  •  FIRE to shoot  •  RUN to sprint"
+theme_override_font_sizes/font_size = 18
+text = "Left thumb — move  •  Right thumb — look  •  FIRE to shoot (hold = auto)  •  RUN to sprint"
 horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="HowToPanel" type="ColorRect" parent="CanvasLayer/UI"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.02, 0.02, 0.03, 0.88)
+
+[node name="HowToText" type="Label" parent="CanvasLayer/UI/HowToPanel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -450.0
+offset_top = -220.0
+offset_right = 450.0
+offset_bottom = 120.0
+theme_override_colors/font_color = Color(0.95, 0.95, 0.9, 1)
+theme_override_font_sizes/font_size = 22
+text = "HOW TO PLAY
+
+• Left thumb — move through Kasserine
+• Right thumb — look around
+• FIRE — shoot (hold for auto-fire)
+• JUMP — jump, RUN — sprint
+• AMMO 30/30 — it reloads automatically
+• Kill enemies to score — 100 points each
+• Civilians are not targets — never shoot them
+• Waves get harder: 8 enemies, then more"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Close" type="Button" parent="CanvasLayer/UI/HowToPanel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = 150.0
+offset_right = 150.0
+offset_bottom = 230.0
+theme_override_font_sizes/font_size = 24
+text = "CLOSE"

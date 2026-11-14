@@ -1,8 +1,59 @@
 # Phantom-Ops
 
 Mobile FPS — **Phantom Ops: Kasserine Operations**. Godot 4.2, Mobile renderer,
-Android (arm64-v8a). No external art assets: the whole city, textures, weapon
-and sounds are generated procedurally in GDScript at runtime.
+Android (arm64-v8a). The whole city, textures, weapon and sounds are
+generated procedurally in GDScript at runtime. One exception: the hero is
+Aymen's own 3D scan (`project/assets/characters/aymen.glb`, LowPoly).
+
+## v0.4 — AAA Kasserine: drone intro, live menu, mosque, citizens, voices
+
+- **Drone intro cinematic** (`scenes/intro.tscn`, `scripts/intro_cinematic.gd`):
+  the camera starts ~175 m over Kasserine at dawn, flies down over the
+  plaza / minaret / market in ~11 s, and descends to Aymen standing at the
+  player spawn — then the view becomes his first-person view and the game
+  starts. Big SKIP button (any tap after 2 s also skips), "DRONE CAM"
+  label, title fade, wind + whoosh sound. The flyover shows the real city
+  (same generator), no enemies during the intro.
+- **AAA main menu**: the menu is now a live 3D scene — the real Kasserine
+  city behind the UI with a slow orbiting camera and Aymen standing in the
+  plaza ("AYMEN — PHANTOM"). Huge PHANTOM OPS title, "KASSERINE — TUNISIA",
+  large DEPLOY / HOW TO PLAY / SOUND: ON buttons, v0.4 label and controls
+  line. DEPLOY goes through the drone intro. If the 3D city ever fails to
+  build, a dark gradient is shown instead so the menu never goes black.
+- **Mosque**: a proper mosque in the south-west block — prayer hall with
+  Islamic geometric-pattern walls (8-pointed stars, geometric only, no
+  text), big teal dome + small dome, gold crescent finial, two minarets,
+  courtyard with colonnade and hanging lanterns, arched doorway. Low
+  medina buildings also get small domes and arched doorways.
+- **Citizens** (`scripts/citizen_spawner.gd`, `scripts/citizen.gd`): 24
+  Tunisian civilians walk the sidewalks and plaza — men in long jebba +
+  chechia (some bearded), women in long dress + hijab in several colours.
+  They walk, pause and flee enemies. **Civilians are never targets**:
+  they have no `take_damage`, and `player.gd` explicitly skips any hit
+  collider in group "civilian" (no damage, no hit sound, no hitmarker,
+  no impact puff). Enemies are the only targets.
+- **Hero — Aymen** (`scripts/hero_aymen.gd`): Aymen's own 3D scan
+  (`assets/characters/aymen.glb`, 3.9 MB LowPoly, head + torso, no legs)
+  is the hero only — menu hero and intro ending. The figure is completed
+  with a procedural long jebba robe below the scan, so he stands as a
+  full figure. If the GLB ever fails to load, a procedural fallback hero
+  is built instead. He is never an enemy or a target.
+- **Voices / ambience**: market murmur loop (procedural), and Tunisian
+  greetings ("Salam", "Marhaba", "Salam alaykum", "Ahla wa sahla") spoken
+  via the OS text-to-speech when you walk close to a citizen — best
+  effort only, guarded by `DisplayServer.has_feature(FEATURE_TEXT_TO_SPEECH)`
+  and throttled to one greeting per 8 s, so a device without TTS simply
+  stays silent. VOICES: ON/OFF toggle in the pause menu next to SOUND.
+  No prayer audio is synthesised.
+- **Icon + no Godot splash**: `icon.png` (512×512, gold minaret +
+  Kasserine mountains + "PO" on dark navy) is the app icon
+  (`config/icon`), and `boot_splash/show_image=false` with a dark
+  background, so the Godot logo never shows on startup.
+- **Graphics**: facade textures raised to 256×256, shop signs
+  ("SOUK", "CAFE", "BAKERY", "PHARMACIE", "BOULANGERIE", "EPICERIE") on
+  market stalls, hanging lanterns in the mosque courtyard. Rendering
+  stays Mobile-safe (colour background, Filmic, no Sky / fog / ACES /
+  MSAA — see v0.2.1).
 
 ## v0.3 — Working FIRE, big HUD, sound, richer city
 
@@ -111,26 +162,33 @@ Local APK (needs Android SDK 33 + export templates + Java 17):
 godot --headless --path project --export-debug "Android" build/PhantomOps.apk
 ```
 
-Package: `com.phantomops.kasserine`, version `0.3.0` (code 4), arm64-v8a,
-immersive mode.
+Package: `com.phantomops.kasserine`, version `0.4.0` (code 5), arm64-v8a,
+immersive mode. App icon: `icon.png` (512×512); Godot boot splash off.
 
 ## Project layout
 
 ```
 project/
   project.godot            Godot 4.2, Mobile renderer, MSAA off, landscape
-  export_presets.cfg       Android preset, v0.3.0 / code 4
+  export_presets.cfg       Android preset, v0.4.0 / code 5
+  icon.png                 App icon (512×512, gold minaret + PO)
+  assets/characters/aymen.glb   Aymen's own 3D scan (hero only)
   scenes/
-    main_menu.tscn         Sunset menu + DEPLOY
-    main_game.tscn         WorldEnvironment, City, Player, EnemySpawner
+    main_menu.tscn         Live 3D city menu + DEPLOY / HOW TO PLAY / SOUND
+    intro.tscn             Drone flyover cinematic -> main game
+    main_game.tscn         WorldEnvironment, City, Player, EnemySpawner, CitizenSpawner
   scripts/
-    kasserine_city_generator.gd   Procedural city (~300 m, seeded)
-    procedural_textures.gd        Runtime ImageTextures + shared materials
-    player.gd               Movement, ammo/reload, rifle viewmodel, HUD wiring
-    mobile_hud.gd           Touch controls + health/ammo/score/compass HUD (v0.3: big buttons, distance hit tests, hold-to-fire, sound toggle)
-    sound_manager.gd        Procedural sounds (WAV generated at runtime, no assets)
+    kasserine_city_generator.gd   Procedural city (~300 m, seeded) + mosque
+    procedural_textures.gd        Runtime ImageTextures + shared materials (256px facades, geometric pattern)
+    player.gd               Movement, ammo/reload, rifle viewmodel, HUD wiring, civilian-safe fire, greetings
+    mobile_hud.gd           Touch controls + health/ammo/score/compass HUD (v0.3: big buttons, distance hit tests, hold-to-fire, sound + voices toggles)
+    sound_manager.gd        Procedural sounds (WAV generated at runtime, no assets) + murmur, whoosh, TTS greetings
+    hero_aymen.gd           Aymen scan + jebba robe hero builder (menu + intro)
+    citizen_spawner.gd      Spawns 24 civilians (men/women) from citizen.gd
+    citizen.gd              Tunisian civilians: jebba/chechia, dress/hijab, walk + flee
+    intro_cinematic.gd      Drone camera flight, title fade, SKIP, handover
     enemy_ai.gd             Chases player, visible body, take_damage()
     enemy_spawner.gd        Waves, spawn points, score wiring
     game_manager.gd         Score/kills (+ score_changed signal)
-    main_menu.gd            DEPLOY -> main game
+    main_menu.gd            Live 3D menu, orbit camera, DEPLOY -> intro
 ```

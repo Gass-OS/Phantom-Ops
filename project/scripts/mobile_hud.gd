@@ -15,6 +15,7 @@ signal pause_pressed
 signal resume_pressed
 signal menu_pressed
 signal sound_toggled(value: bool)
+signal voices_toggled(value: bool)
 signal sprint_changed(value: bool)
 var joy_id := -1
 var look_id := -1
@@ -24,6 +25,7 @@ var move_value := Vector2.ZERO
 var paused := false
 var sprinting := false
 var sound_on := true
+var voices_on := true
 var health := 100.0
 var max_health := 100.0
 var ammo := 30
@@ -58,6 +60,8 @@ func _layout(w: float, h: float) -> Dictionary:
 		"menu_r": 58.0 * s,
 		"sound_c": Vector2(w * 0.5, h * 0.73),
 		"sound_r": 58.0 * s,
+		"voices_c": Vector2(w * 0.5, h * 0.86),
+		"voices_r": 58.0 * s,
 		"s": s,
 	}
 
@@ -103,6 +107,10 @@ func show_hitmarker() -> void:
 
 func set_sound_on(v: bool) -> void:
 	sound_on = v
+	queue_redraw()
+
+func set_voices_on(v: bool) -> void:
+	voices_on = v
 	queue_redraw()
 
 func _draw() -> void:
@@ -187,6 +195,11 @@ func _draw() -> void:
 		_button(sound_c, sound_r, Color(0.16, 0.30, 0.45, 0.98))
 		var sound_text := "SOUND: ON" if sound_on else "SOUND: OFF"
 		draw_string(f, Vector2(sound_c.x - 120.0 * sc, sound_c.y + 6.0 * sc), sound_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
+		var voices_c: Vector2 = lay["voices_c"]
+		var voices_r: float = lay["voices_r"]
+		_button(voices_c, voices_r, Color(0.30, 0.35, 0.20, 0.98))
+		var voices_text := "VOICES: ON" if voices_on else "VOICES: OFF"
+		draw_string(f, Vector2(voices_c.x - 120.0 * sc, voices_c.y + 6.0 * sc), voices_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
 
 func _draw_compass(f: Font, w: float) -> void:
 	var heading := wrapf(-rad_to_deg(compass_yaw), 0.0, 360.0)
@@ -247,6 +260,10 @@ func _start(id: int, p: Vector2, w: float, h: float) -> void:
 		elif p.distance_to(lay["sound_c"]) <= float(lay["sound_r"]) + 12.0:
 			sound_on = not sound_on
 			sound_toggled.emit(sound_on)
+			queue_redraw()
+		elif p.distance_to(lay["voices_c"]) <= float(lay["voices_r"]) + 12.0:
+			voices_on = not voices_on
+			voices_toggled.emit(voices_on)
 			queue_redraw()
 		return
 	if p.distance_to(lay["pause_c"]) <= float(lay["pause_r"]) + 12.0:

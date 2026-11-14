@@ -1,0 +1,33 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/kasserine_city_generator.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/intro_cinematic.gd" id="2"]
+
+[sub_resource type="Environment" id="Environment_intro"]
+# v0.2.1 black-screen fix, same as main_game: plain colour background
+# + colour ambient, Filmic, no fog, no Sky. Never black on Mobile.
+background_mode = 1
+background_color = Color(0.53, 0.67, 0.84, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.85, 0.82, 0.75, 1)
+ambient_light_energy = 0.9
+tonemap_mode = 2
+tonemap_exposure = 1.0
+glow_enabled = false
+fog_enabled = false
+
+[node name="Intro" type="Node3D"]
+script = ExtResource("2")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_intro")
+
+[node name="City" type="Node3D" parent="."]
+script = ExtResource("1")
+
+[node name="DroneCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -140, 175, 190)
+current = true
+fov = 70.0
+near = 0.1
+far = 600.0
