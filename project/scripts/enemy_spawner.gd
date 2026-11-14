@@ -14,12 +14,18 @@ var _between_waves: bool = false
 var _timer: float = 0.0
 var _player: Node3D = null
 var _city: Node3D = null
+var _sound: SoundManager
 
 func _ready() -> void:
-	_player = get_tree().current_scene.get_node_or_null("Player") as Node3D
+	_sound = SoundManager.new()
+	_sound.name = "SoundManager"
+	add_child(_sound)
+	var cs := get_tree().current_scene
+	if cs != null:
+		_player = cs.get_node_or_null("Player") as Node3D
+		_city = cs.get_node_or_null("City") as Node3D
 	if _player == null:
 		_player = get_tree().get_first_node_in_group("player") as Node3D
-	_city = get_tree().current_scene.get_node_or_null("City") as Node3D
 	# Deferred: spawning (add_child) during scene setup fails with
 	# "parent node is busy setting up children".
 	call_deferred("_start_wave")
@@ -33,6 +39,8 @@ func _process(delta: float) -> void:
 
 func _start_wave() -> void:
 	wave += 1
+	if _sound != null:
+		_sound.play_horn()
 	var count: int = mini(enemies_per_wave + wave - 1, max_wave_size)
 	var points: Array[Vector3] = _spawn_points()
 	if points.is_empty():
@@ -74,6 +82,9 @@ func _spawn_enemy(pos: Vector3) -> void:
 
 func _on_enemy_died(_enemy: Node) -> void:
 	alive -= 1
+	if _sound != null:
+		_sound.play_kill()
+		_sound.play_enemy_death()
 	if is_instance_valid(GameManager):
 		GameManager.add_kill()
 		GameManager.add_score(100)

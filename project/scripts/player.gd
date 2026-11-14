@@ -25,10 +25,24 @@ var _recoil := 0.0
 var _viewmodel: Node3D
 var _muzzle_flash: MeshInstance3D
 var _muzzle_light: OmniLight3D
+var _sound: SoundManager
+var _firing := false
+var _step_timer := 0.0
+var _tracer_mat: StandardMaterial3D
 @onready var camera: Camera3D = $Head/Camera3D
 func _ready() -> void:
 	current_health = max_health
 	ammo = mag_size
+	_sound = SoundManager.new()
+	_sound.name = "SoundManager"
+	add_child(_sound)
+	_sound.start_wind()
+	_tracer_mat = StandardMaterial3D.new()
+	_tracer_mat.albedo_color = Color(1.0, 0.85, 0.4)
+	_tracer_mat.emission_enabled = true
+	_tracer_mat.emission = Color(1.0, 0.8, 0.3)
+	_tracer_mat.emission_energy_multiplier = 2.0
+	_tracer_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_create_viewmodel()
 	# Deferred: adding the HUD layer to the root during scene setup
 	# fails ("parent node is busy setting up children").
@@ -55,11 +69,28 @@ func _create_mobile_hud() -> void:
 	mobile_hud.look_delta.connect(_on_mobile_look)
 	mobile_hud.jump_pressed.connect(_on_mobile_jump)
 	mobile_hud.fire_pressed.connect(_on_mobile_fire)
+	if mobile_hud.has_signal("fire_held_changed"):
+		mobile_hud.fire_held_changed.connect(_on_fire_held_changed)
 	mobile_hud.pause_pressed.connect(_on_pause)
 	mobile_hud.resume_pressed.connect(_on_resume)
 	mobile_hud.menu_pressed.connect(_on_menu)
 	mobile_hud.sprint_changed.connect(_on_sprint)
+	mobile_hud.sound_toggled.connect(_on_sound_toggled)
+	if mobile_hud.has_method("set_sound_on"):
+		mobile_hud.set_sound_on(SoundManager.sound_on)
 	_update_hud_all()
+
+func _on_fire_held_changed(v: bool) -> void:
+	# Hold-to-fire: the HUD emits this while FIRE is held; _process
+	# re-fires through the normal cooldown-gated path (~8 shots/s).
+	_firing = v
+
+func _on_sound_toggled(v: bool) -> void:
+	SoundManager.set_sound_on(v)
+	if _sound != null and not v:
+		_sound.stop_wind()
+	elif _sound != null and v:
+		_sound.start_wind()
 func _on_score_changed(score: int, kills: int) -> void:
 	if mobile_hud != null and mobile_hud.has_method("set_score"):
 		mobile_hud.set_score(score, kills)
@@ -76,12 +107,31 @@ func _create_viewmodel() -> void:
 	var grip_mat := StandardMaterial3D.new()
 	grip_mat.albedo_color = Color(0.20, 0.16, 0.12)
 	grip_mat.roughness = 0.9
+	var tan_mat := StandardMaterial3D.new()
+	tan_mat.albedo_color = Color(0.45, 0.38, 0.26)
+	tan_mat.roughness = 0.85
+	var skin_mat := StandardMaterial3D.new()
+	skin_mat.albedo_color = Color(0.72, 0.55, 0.42)
+	skin_mat.roughness = 0.9
 	var parts: Array = [
 		[Vector3(0, 0, 0), Vector3(0.09, 0.13, 0.55), metal],
 		[Vector3(0, 0.02, -0.38), Vector3(0.05, 0.05, 0.30), metal],
+		# Sight post + red-dot housing on top.
 		[Vector3(0, 0.09, -0.05), Vector3(0.03, 0.05, 0.04), metal],
+		[Vector3(0, 0.125, -0.05), Vector3(0.05, 0.03, 0.09), metal],
+		# Handguard (tan) around the barrel + foregrip.
+		[Vector3(0, 0.0, -0.42), Vector3(0.11, 0.11, 0.22), tan_mat],
+		[Vector3(0, -0.09, -0.38), Vector3(0.05, 0.09, 0.06), grip_mat],
+		# Magazine (tan, angled) + stock.
+		[Vector3(0, -0.13, 0.02), Vector3(0.06, 0.20, 0.09), tan_mat],
+		[Vector3(0, -0.01, 0.36), Vector3(0.08, 0.11, 0.16), grip_mat],
+		# Pistol grip + trigger guard.
 		[Vector3(0, -0.10, 0.12), Vector3(0.07, 0.14, 0.10), grip_mat],
 		[Vector3(0, -0.06, -0.18), Vector3(0.06, 0.10, 0.08), grip_mat],
+		# Suppressor on the muzzle.
+		[Vector3(0, 0.02, -0.66), Vector3(0.06, 0.06, 0.14), metal],
+		# Left hand on the handguard.
+		[Vector3(0, -0.08, -0.42), Vector3(0.07, 0.06, 0.10), skin_mat],
 	]
 	for p in parts:
 		var mi := MeshInstance3D.new()
@@ -126,6 +176,8 @@ func _create_viewmodel() -> void:
 func _process(delta: float) -> void:
 	if _cooldown_timer > 0.0:
 		_cooldown_timer -= delta
+	if _firing and not is_paused and not is_dead:
+		_on_mobile_fire()
 	if _flash_timer > 0.0:
 		_flash_timer -= delta
 		if _flash_timer <= 0.0:
@@ -136,6 +188,8 @@ func _process(delta: float) -> void:
 		if _reload_timer <= 0.0:
 			reloading = false
 			ammo = mag_size
+			if _sound != null:
+				_sound.play_reload_done()
 			_update_hud_all()
 	if _recoil > 0.0:
 		_recoil = maxf(0.0, _recoil - delta * 0.6)
@@ -164,28 +218,73 @@ func _on_mobile_fire() -> void:
 		return
 	_cooldown_timer = fire_cooldown
 	ammo -= 1
+	if _sound != null:
+		_sound.play_shot()
 	_flash_timer = 0.06
 	_muzzle_flash.visible = true
 	_muzzle_flash.scale = Vector3(randf_range(0.8, 1.3), randf_range(0.8, 1.3), randf_range(0.8, 1.3))
 	_muzzle_light.light_energy = 2.0
 	_recoil = 1.0
 	camera.rotation.x = clampf(camera.rotation.x + 0.012, deg_to_rad(-80), deg_to_rad(80))
-	var q := PhysicsRayQueryParameters3D.create(camera.global_position, camera.global_position - camera.global_transform.basis.z * 100.0)
+	var target := camera.global_position - camera.global_transform.basis.z * 100.0
+	var q := PhysicsRayQueryParameters3D.create(camera.global_position, target)
 	q.exclude = [self]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var end_point := target
+	if not hit.is_empty():
+		end_point = hit.position
+		_spawn_impact_puff(end_point)
+	_spawn_tracer(camera.global_position - camera.global_transform.basis.z * 0.8, end_point)
 	if not hit.is_empty() and hit.collider.has_method("take_damage"):
 		hit.collider.take_damage(25.0)
+		if _sound != null:
+			_sound.play_hit()
 		if mobile_hud != null and mobile_hud.has_method("show_hitmarker"):
 			mobile_hud.show_hitmarker()
 	if ammo <= 0:
 		_start_reload()
 	else:
 		_update_hud_all()
+func _spawn_tracer(from: Vector3, to: Vector3) -> void:
+	var dist := from.distance_to(to)
+	if dist < 0.5:
+		return
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.025, 0.025, dist)
+	box.material = _tracer_mat
+	mi.mesh = box
+	mi.position = (from + to) * 0.5
+	scene.add_child(mi)
+	mi.look_at(to, Vector3.UP)
+	var timer := get_tree().create_timer(0.07)
+	timer.timeout.connect(mi.queue_free)
+
+func _spawn_impact_puff(at: Vector3) -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var mi := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.12
+	mesh.height = 0.24
+	mesh.material = _tracer_mat
+	mi.mesh = mesh
+	mi.position = at
+	scene.add_child(mi)
+	var timer := get_tree().create_timer(0.15)
+	timer.timeout.connect(mi.queue_free)
+
 func _start_reload() -> void:
 	if reloading or ammo == mag_size:
 		return
 	reloading = true
 	_reload_timer = reload_time
+	if _sound != null:
+		_sound.play_reload()
 	_update_hud_all()
 func _on_sprint(v: bool) -> void:
 	mobile_sprinting = v
@@ -226,6 +325,11 @@ func _physics_process(delta: float) -> void:
 		input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	var speed := sprint_speed if mobile_sprinting or Input.is_action_pressed("ui_accept") else walk_speed
+	if is_on_floor() and direction.length() > 0.1 and _sound != null:
+		_step_timer -= delta
+		if _step_timer <= 0.0:
+			_step_timer = 0.28 if speed > walk_speed else 0.38
+			_sound.play_step()
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
 	if OS.get_name() not in ["Android", "iOS"] and Input.is_action_just_pressed("ui_select") and is_on_floor():
@@ -236,6 +340,8 @@ func take_damage(damage: float) -> void:
 		return
 	current_health = maxf(0.0, current_health - damage)
 	health_changed.emit(current_health, max_health)
+	if _sound != null:
+		_sound.play_hurt()
 	_update_hud_all()
 	if current_health <= 0:
 		is_dead = true

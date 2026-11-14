@@ -71,6 +71,36 @@ func _build_body() -> void:
 	gun.mesh = gun_mesh
 	gun.position = Vector3(0.25, 1.15, 0.3)
 	body.add_child(gun)
+	# Arms, vest plate and headband stripe — reads at distance.
+	var vest_mat := StandardMaterial3D.new()
+	vest_mat.albedo_color = Color(0.30, 0.28, 0.20)
+	vest_mat.roughness = 0.95
+	var vest := MeshInstance3D.new()
+	var vest_mesh := BoxMesh.new()
+	vest_mesh.size = Vector3(0.5, 0.45, 0.10)
+	vest_mesh.material = vest_mat
+	vest.mesh = vest_mesh
+	vest.position = Vector3(0, 1.10, 0.20)
+	body.add_child(vest)
+	var band_mat := StandardMaterial3D.new()
+	band_mat.albedo_color = Color(0.75, 0.18, 0.12)
+	band_mat.roughness = 0.9
+	var band := MeshInstance3D.new()
+	var band_mesh := BoxMesh.new()
+	band_mesh.size = Vector3(0.46, 0.07, 0.46)
+	band_mesh.material = band_mat
+	band.mesh = band_mesh
+	band.position = Vector3(0, 1.70, 0)
+	body.add_child(band)
+	for ax in [-0.42, 0.42]:
+		var arm := MeshInstance3D.new()
+		var arm_mesh := BoxMesh.new()
+		arm_mesh.size = Vector3(0.16, 0.62, 0.16)
+		arm_mesh.material = uniform
+		arm.mesh = arm_mesh
+		arm.position = Vector3(ax, 1.02, 0.05)
+		arm.rotation.z = -0.15 if ax < 0.0 else 0.15
+		body.add_child(arm)
 
 func _physics_process(delta):
 	if is_dead:

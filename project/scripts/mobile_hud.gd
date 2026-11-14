@@ -1,18 +1,29 @@
 extends Control
+## Phantom Ops v0.3 — touch HUD.
+## v0.3 fix: the drawn buttons and the tap test now come from ONE layout
+## (_layout), so a tap can never miss a button it can see. v0.2 drew FIRE
+## at (w-94, h-116) r42 but tested a rectangle (x > w-150, y > h-105):
+## only the bottom sliver of FIRE fired — a centre tap fell through to
+## sprint. Now every button is a proper circle hit-test, FIRE first.
+## Buttons are ~1.7x bigger than v0.2 and scale with the viewport.
 signal move_changed(value: Vector2)
 signal look_delta(value: Vector2)
 signal jump_pressed
 signal fire_pressed
+signal fire_held_changed(value: bool)
 signal pause_pressed
 signal resume_pressed
 signal menu_pressed
+signal sound_toggled(value: bool)
 signal sprint_changed(value: bool)
 var joy_id := -1
 var look_id := -1
+var fire_id := -1
+var run_id := -1
 var move_value := Vector2.ZERO
 var paused := false
 var sprinting := false
-# v0.2 HUD state (set by Player / EnemySpawner via the setters below).
+var sound_on := true
 var health := 100.0
 var max_health := 100.0
 var ammo := 30
@@ -23,162 +34,285 @@ var kills := 0
 var wave := 1
 var compass_yaw := 0.0
 var _hitmarker_until := 0
-const JOY := Vector2(112, -128)
+
+# One layout for drawing AND hit-testing. Base sizes are for a
+# 1920x1080 landscape viewport; they scale down a little on small
+# screens and up a little on very large ones, never below 0.7x.
+func _layout(w: float, h: float) -> Dictionary:
+	var s := clampf(minf(w / 1920.0, h / 1080.0), 0.7, 1.25)
+	return {
+		"joy_c": Vector2(170.0 * s, h - 170.0 * s),
+		"joy_r": 118.0 * s,
+		"knob_r": 46.0 * s,
+		"fire_c": Vector2(w - 130.0 * s, h - 150.0 * s),
+		"fire_r": 80.0 * s,
+		"jump_c": Vector2(w - 330.0 * s, h - 95.0 * s),
+		"jump_r": 60.0 * s,
+		"run_c": Vector2(w - 330.0 * s, h - 250.0 * s),
+		"run_r": 56.0 * s,
+		"pause_c": Vector2(w - 60.0 * s, 60.0 * s),
+		"pause_r": 40.0 * s,
+		"resume_c": Vector2(w * 0.5, h * 0.47),
+		"resume_r": 58.0 * s,
+		"menu_c": Vector2(w * 0.5, h * 0.60),
+		"menu_r": 58.0 * s,
+		"sound_c": Vector2(w * 0.5, h * 0.73),
+		"sound_r": 58.0 * s,
+		"s": s,
+	}
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	queue_redraw()
+
 func _process(_delta: float) -> void:
 	if _hitmarker_until > 0 and Time.get_ticks_msec() > _hitmarker_until:
 		_hitmarker_until = 0
 		queue_redraw()
-# --- setters (safe to call before _ready: they only store + redraw) ---
+
 func set_health(current: float, maximum: float) -> void:
 	health = current
 	max_health = maximum
 	queue_redraw()
+
 func set_ammo(current: int, mag: int, is_reloading: bool) -> void:
 	ammo = current
 	mag_size = mag
 	reloading = is_reloading
 	queue_redraw()
+
 func set_score(new_score: int, new_kills: int) -> void:
 	score = new_score
 	kills = new_kills
 	queue_redraw()
+
 func set_wave(new_wave: int) -> void:
 	wave = new_wave
 	queue_redraw()
+
 func set_compass(yaw: float) -> void:
 	if absf(yaw - compass_yaw) > 0.02:
 		compass_yaw = yaw
 		queue_redraw()
+
 func show_hitmarker() -> void:
 	_hitmarker_until = Time.get_ticks_msec() + 250
 	queue_redraw()
+
+func set_sound_on(v: bool) -> void:
+	sound_on = v
+	queue_redraw()
+
 func _draw() -> void:
 	var s := get_viewport_rect().size
 	var w := s.x
 	var h := s.y
+	var lay := _layout(w, h)
+	var sc: float = lay["s"]
 	var f := ThemeDB.fallback_font
-	var c := Vector2(112, h - 128)
-	_button(c, 76, Color(0.08,0.12,0.16,0.48))
-	_button(c + move_value * 43, 29, Color(0.75,0.82,0.86,0.8))
-	draw_string(f, Vector2(34,h-24), "MOVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
-	_button(Vector2(w-94,h-116), 42, Color(0.72,0.16,0.12,0.78))
-	draw_string(f, Vector2(w-125,h-108), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 62, 16, Color.WHITE)
-	_button(Vector2(w-194,h-72), 34, Color(0.16,0.38,0.58,0.8))
-	draw_string(f, Vector2(w-222,h-67), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, 56, 12, Color.WHITE)
-	_button(Vector2(w-194,h-158), 32, Color(0.22,0.25,0.29,0.8))
-	draw_string(f, Vector2(w-222,h-154), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 56, 12, Color.WHITE)
-	_button(Vector2(w-42,42), 25, Color(0.08,0.10,0.13,0.85))
-	draw_string(f, Vector2(w-51,48), "Ⅱ", HORIZONTAL_ALIGNMENT_CENTER, 18, 18, Color.WHITE)
-	draw_rect(Rect2(18,18,170,34), Color(0.02,0.03,0.04,0.55), true)
-	draw_string(f, Vector2(28,41), "PHANTOM OPS  •  FIELD", HORIZONTAL_ALIGNMENT_LEFT, 160, 12, Color.WHITE)
-	# --- v0.2: health bar under the title chip ---
+	var joy_c: Vector2 = lay["joy_c"]
+	var joy_r: float = lay["joy_r"]
+	# Joystick.
+	_button(joy_c, joy_r, Color(0.08, 0.12, 0.16, 0.48))
+	_button(joy_c + move_value * (joy_r - 46.0 * sc), 46.0 * sc, Color(0.75, 0.82, 0.86, 0.8))
+	draw_string(f, Vector2(joy_c.x - 46.0 * sc, joy_c.y + joy_r + 34.0 * sc), "MOVE", HORIZONTAL_ALIGNMENT_CENTER, 92.0 * sc, int(22.0 * sc), Color.WHITE)
+	# FIRE / JUMP / RUN — same centres/radii as the hit test.
+	var fire_c: Vector2 = lay["fire_c"]
+	var fire_r: float = lay["fire_r"]
+	var fire_col := Color(0.85, 0.16, 0.12, 0.9) if fire_id != -1 else Color(0.72, 0.16, 0.12, 0.78)
+	_button(fire_c, fire_r, fire_col)
+	draw_string(f, Vector2(fire_c.x - fire_r, fire_c.y + 9.0 * sc), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, fire_r * 2.0, int(26.0 * sc), Color.WHITE)
+	var jump_c: Vector2 = lay["jump_c"]
+	var jump_r: float = lay["jump_r"]
+	_button(jump_c, jump_r, Color(0.16, 0.38, 0.58, 0.8))
+	draw_string(f, Vector2(jump_c.x - jump_r, jump_c.y + 7.0 * sc), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, jump_r * 2.0, int(20.0 * sc), Color.WHITE)
+	var run_c: Vector2 = lay["run_c"]
+	var run_r: float = lay["run_r"]
+	var run_col := Color(0.35, 0.45, 0.50, 0.95) if sprinting else Color(0.22, 0.25, 0.29, 0.8)
+	_button(run_c, run_r, run_col)
+	draw_string(f, Vector2(run_c.x - run_r, run_c.y + 7.0 * sc), "RUN", HORIZONTAL_ALIGNMENT_CENTER, run_r * 2.0, int(20.0 * sc), Color.WHITE)
+	# Pause.
+	var pause_c: Vector2 = lay["pause_c"]
+	var pause_r: float = lay["pause_r"]
+	_button(pause_c, pause_r, Color(0.08, 0.10, 0.13, 0.85))
+	draw_string(f, Vector2(pause_c.x - pause_r, pause_c.y + 10.0 * sc), "II", HORIZONTAL_ALIGNMENT_CENTER, pause_r * 2.0, int(28.0 * sc), Color.WHITE)
+	# Title chip + health bar (bigger than v0.2).
+	draw_rect(Rect2(18, 18, 250, 46), Color(0.02, 0.03, 0.04, 0.55), true)
+	draw_string(f, Vector2(30, 48), "PHANTOM OPS  •  FIELD", HORIZONTAL_ALIGNMENT_LEFT, 230, int(18.0 * sc), Color.WHITE)
 	var hp_ratio := clampf(health / maxf(max_health, 1.0), 0.0, 1.0)
-	draw_rect(Rect2(18, 58, 180, 16), Color(0.02,0.03,0.04,0.6), true)
-	var hp_col := Color(0.25,0.75,0.30) if hp_ratio > 0.5 else (Color(0.9,0.7,0.2) if hp_ratio > 0.25 else Color(0.85,0.2,0.15))
-	draw_rect(Rect2(20, 60, 176 * hp_ratio, 12), hp_col, true)
-	draw_string(f, Vector2(24, 71), "HP %d" % int(health), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
-	# --- v0.2: score / kills / wave, top centre ---
+	draw_rect(Rect2(18, 72, 260, 24), Color(0.02, 0.03, 0.04, 0.6), true)
+	var hp_col := Color(0.25, 0.75, 0.30) if hp_ratio > 0.5 else (Color(0.9, 0.7, 0.2) if hp_ratio > 0.25 else Color(0.85, 0.2, 0.15))
+	draw_rect(Rect2(20, 74, 256 * hp_ratio, 20), hp_col, true)
+	draw_string(f, Vector2(26, 92), "HP %d" % int(health), HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * sc), Color.WHITE)
+	# Score / kills / wave, top centre.
 	var status := "SCORE %d    KILLS %d    WAVE %d" % [score, kills, wave]
-	draw_rect(Rect2(w / 2 - 170, 18, 340, 30), Color(0.02,0.03,0.04,0.55), true)
-	draw_string(f, Vector2(w / 2 - 160, 39), status, HORIZONTAL_ALIGNMENT_LEFT, 320, 14, Color.WHITE)
-	# --- v0.2: compass strip under the status bar ---
+	draw_rect(Rect2(w / 2 - 230, 18, 460, 42), Color(0.02, 0.03, 0.04, 0.55), true)
+	draw_string(f, Vector2(w / 2 - 215, 47), status, HORIZONTAL_ALIGNMENT_LEFT, 430, int(20.0 * sc), Color.WHITE)
 	_draw_compass(f, w)
-	# --- v0.2: ammo, above the FIRE button ---
+	# Ammo, above FIRE; hold-to-fire hint under it.
 	var ammo_text := "RELOADING..." if reloading else "AMMO  %d / %d" % [ammo, mag_size]
-	var ammo_col := Color(0.95,0.75,0.3) if reloading or ammo <= 6 else Color.WHITE
-	draw_string(f, Vector2(w - 260, h - 205), ammo_text, HORIZONTAL_ALIGNMENT_LEFT, 200, 16, ammo_col)
-	# --- v0.2: crosshair + hit marker, screen centre ---
+	var ammo_col := Color(0.95, 0.75, 0.3) if reloading or ammo <= 6 else Color.WHITE
+	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y - fire_r - 18.0 * sc), ammo_text, HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(24.0 * sc), ammo_col)
+	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y + fire_r + 30.0 * sc), "HOLD FIRE = AUTO", HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(14.0 * sc), Color(1, 1, 1, 0.65))
+	# Crosshair + hit marker, screen centre.
 	if not paused:
 		var cx := w / 2
 		var cy := h / 2
 		var ch := Color(1, 1, 1, 0.9)
-		draw_line(Vector2(cx - 16, cy), Vector2(cx - 6, cy), ch, 2)
-		draw_line(Vector2(cx + 6, cy), Vector2(cx + 16, cy), ch, 2)
-		draw_line(Vector2(cx, cy - 16), Vector2(cx, cy - 6), ch, 2)
-		draw_line(Vector2(cx, cy + 6), Vector2(cx, cy + 16), ch, 2)
-		draw_circle(Vector2(cx, cy), 1.5, ch)
+		draw_line(Vector2(cx - 22, cy), Vector2(cx - 8, cy), ch, 3)
+		draw_line(Vector2(cx + 8, cy), Vector2(cx + 22, cy), ch, 3)
+		draw_line(Vector2(cx, cy - 22), Vector2(cx, cy - 8), ch, 3)
+		draw_line(Vector2(cx, cy + 8), Vector2(cx, cy + 22), ch, 3)
+		draw_circle(Vector2(cx, cy), 2.0, ch)
 		if _hitmarker_until > 0:
 			var hm := Color(1.0, 0.25, 0.2, 0.95)
 			for sx in [-1.0, 1.0]:
 				for sy in [-1.0, 1.0]:
-					draw_line(Vector2(cx + sx * 8, cy + sy * 8), Vector2(cx + sx * 18, cy + sy * 18), hm, 3)
+					draw_line(Vector2(cx + sx * 10, cy + sy * 10), Vector2(cx + sx * 24, cy + sy * 24), hm, 4)
 	if paused:
-		draw_rect(Rect2(Vector2.ZERO,s), Color(0.01,0.02,0.03,0.82), true)
-		draw_string(f, Vector2(w/2-100,h*0.36), "MISSION PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 200, 24, Color.WHITE)
-		_button(Vector2(w/2,h*0.49), 38, Color(0.12,0.42,0.30,0.98))
-		draw_string(f, Vector2(w/2-48,h*0.49+5), "RESUME", HORIZONTAL_ALIGNMENT_CENTER, 96, 15, Color.WHITE)
-		_button(Vector2(w/2,h*0.60), 38, Color(0.45,0.16,0.13,0.98))
-		draw_string(f, Vector2(w/2-58,h*0.60+5), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 116, 14, Color.WHITE)
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0.01, 0.02, 0.03, 0.82), true)
+		draw_string(f, Vector2(w / 2 - 200, h * 0.30), "MISSION PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 400, int(34.0 * sc), Color.WHITE)
+		var resume_c: Vector2 = lay["resume_c"]
+		var resume_r: float = lay["resume_r"]
+		_button(resume_c, resume_r, Color(0.12, 0.42, 0.30, 0.98))
+		draw_string(f, Vector2(resume_c.x - 110.0 * sc, resume_c.y + 6.0 * sc), "RESUME", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(22.0 * sc), Color.WHITE)
+		var menu_c: Vector2 = lay["menu_c"]
+		var menu_r: float = lay["menu_r"]
+		_button(menu_c, menu_r, Color(0.45, 0.16, 0.13, 0.98))
+		draw_string(f, Vector2(menu_c.x - 110.0 * sc, menu_c.y + 6.0 * sc), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(20.0 * sc), Color.WHITE)
+		var sound_c: Vector2 = lay["sound_c"]
+		var sound_r: float = lay["sound_r"]
+		_button(sound_c, sound_r, Color(0.16, 0.30, 0.45, 0.98))
+		var sound_text := "SOUND: ON" if sound_on else "SOUND: OFF"
+		draw_string(f, Vector2(sound_c.x - 120.0 * sc, sound_c.y + 6.0 * sc), sound_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
+
 func _draw_compass(f: Font, w: float) -> void:
 	var heading := wrapf(-rad_to_deg(compass_yaw), 0.0, 360.0)
 	var labels := {0.0: "N", 45.0: "NE", 90.0: "E", 135.0: "SE", 180.0: "S", 225.0: "SW", 270.0: "W", 315.0: "NW"}
 	var cx := w / 2
 	for offset in range(-60, 61, 15):
 		var ang := wrapf(heading + float(offset), 0.0, 360.0)
-		var x := cx + float(offset) * 3.0
+		var x := cx + float(offset) * 4.0
 		var label := ""
 		for a in labels.keys():
 			if absf(wrapf(ang - a, -180.0, 180.0)) < 8.0:
 				label = labels[a]
 		if label != "":
-			draw_string(f, Vector2(x - 10, 72), label, HORIZONTAL_ALIGNMENT_CENTER, 20, 13, Color(1, 0.85, 0.5))
+			draw_string(f, Vector2(x - 14, 92), label, HORIZONTAL_ALIGNMENT_CENTER, 28, 18, Color(1, 0.85, 0.5))
 		else:
-			draw_line(Vector2(x, 60), Vector2(x, 66), Color(1, 1, 1, 0.6), 1)
-	draw_line(Vector2(cx, 56), Vector2(cx, 60), Color(1, 0.85, 0.5), 2)
+			draw_line(Vector2(x, 76), Vector2(x, 84), Color(1, 1, 1, 0.6), 1)
+	draw_line(Vector2(cx, 70), Vector2(cx, 76), Color(1, 0.85, 0.5), 2)
+
 func _button(p: Vector2, r: float, color: Color) -> void:
-	draw_circle(p,r,color)
-	draw_arc(p,r,0,TAU,48,Color(0.9,0.94,1,0.85),2,true)
+	draw_circle(p, r, color)
+	draw_arc(p, r, 0, TAU, 48, Color(0.9, 0.94, 1, 0.85), 3, true)
+
 func _gui_input(e: InputEvent) -> void:
 	var s := get_viewport_rect().size
 	if e is InputEventScreenTouch:
-		if e.pressed: _start(e.index,e.position,s.x,s.y)
-		else: _end(e.index)
+		if e.pressed:
+			_start(e.index, e.position, s.x, s.y)
+		else:
+			_end(e.index)
 		accept_event()
 	elif e is InputEventScreenDrag:
 		if e.index == joy_id:
-			move_value = ((e.position - Vector2(112,s.y-128))/76).limit_length(1)
+			var lay := _layout(s.x, s.y)
+			var joy_c: Vector2 = lay["joy_c"]
+			var joy_r: float = lay["joy_r"]
+			move_value = ((e.position - joy_c) / joy_r).limit_length(1)
 			move_changed.emit(move_value)
 			queue_redraw()
-		elif e.index == look_id and not paused: look_delta.emit(e.relative)
+		elif e.index == look_id and not paused:
+			look_delta.emit(e.relative)
 		accept_event()
 	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
-		if e.pressed: _start(-2,e.position,s.x,s.y)
-		else: _end(-2)
+		if e.pressed:
+			_start(-2, e.position, s.x, s.y)
+		else:
+			_end(-2)
 	elif e is InputEventMouseMotion and look_id == -2 and not paused:
 		look_delta.emit(e.relative)
-func _start(id: int,p: Vector2,w: float,h: float) -> void:
+
+func _start(id: int, p: Vector2, w: float, h: float) -> void:
+	var lay := _layout(w, h)
 	if paused:
-		if absf(p.y-h*0.49)<48: resume_pressed.emit()
-		elif absf(p.y-h*0.60)<48: menu_pressed.emit()
+		# Circle hit-tests, same centres as drawn — no y-only bands.
+		if p.distance_to(lay["resume_c"]) <= float(lay["resume_r"]) + 12.0:
+			resume_pressed.emit()
+		elif p.distance_to(lay["menu_c"]) <= float(lay["menu_r"]) + 12.0:
+			menu_pressed.emit()
+		elif p.distance_to(lay["sound_c"]) <= float(lay["sound_r"]) + 12.0:
+			sound_on = not sound_on
+			sound_toggled.emit(sound_on)
+			queue_redraw()
 		return
-	if p.x>w-76 and p.y<82: pause_pressed.emit()
-	elif p.x<w*0.43 and p.y>h*0.55:
-		joy_id=id
-		move_value=((p-Vector2(112,h-128))/76).limit_length(1)
+	if p.distance_to(lay["pause_c"]) <= float(lay["pause_r"]) + 12.0:
+		pause_pressed.emit()
+		return
+	# FIRE first: it is the biggest button and must never be shadowed.
+	if p.distance_to(lay["fire_c"]) <= float(lay["fire_r"]) + 10.0:
+		fire_id = id
+		fire_pressed.emit()
+		fire_held_changed.emit(true)
+		queue_redraw()
+		return
+	if p.distance_to(lay["jump_c"]) <= float(lay["jump_r"]) + 10.0:
+		jump_pressed.emit()
+		return
+	if p.distance_to(lay["run_c"]) <= float(lay["run_r"]) + 10.0:
+		run_id = id
+		sprinting = true
+		sprint_changed.emit(true)
+		queue_redraw()
+		return
+	var joy_c: Vector2 = lay["joy_c"]
+	var joy_r: float = lay["joy_r"]
+	if p.x < w * 0.43 and p.y > h * 0.55:
+		joy_id = id
+		move_value = ((p - joy_c) / joy_r).limit_length(1)
 		move_changed.emit(move_value)
 		queue_redraw()
-	elif p.x>w-245 and p.y>h-205:
-		if p.y>h-105 and p.x>w-150: fire_pressed.emit()
-		elif p.y>h-115: jump_pressed.emit()
-		else:
-			sprinting=true
-			sprint_changed.emit(true)
-	else: look_id=id
+	else:
+		look_id = id
+
 func _end(id: int) -> void:
-	if id==joy_id:
-		joy_id=-1
-		move_value=Vector2.ZERO
+	if id == joy_id:
+		joy_id = -1
+		move_value = Vector2.ZERO
 		move_changed.emit(Vector2.ZERO)
 		queue_redraw()
-	if id==look_id: look_id=-1
-	if sprinting:
-		sprinting=false
-		sprint_changed.emit(false)
+	if id == look_id:
+		look_id = -1
+	if id == fire_id:
+		fire_id = -1
+		fire_held_changed.emit(false)
+		queue_redraw()
+	if id == run_id:
+		run_id = -1
+		if sprinting:
+			sprinting = false
+			sprint_changed.emit(false)
+			queue_redraw()
+
+# Public wrappers for the headless hit-test (underscore methods are
+# private in GDScript and cannot be called from another script).
+# These call this file's own _layout()/_start()/_end(), so the test
+# exercises the real hit classification, not a copy of it.
+func layout_for_test(w: float, h: float) -> Dictionary:
+	return _layout(w, h)
+
+func start_for_test(id: int, p: Vector2, w: float, h: float) -> void:
+	_start(id, p, w, h)
+
+func end_for_test(id: int) -> void:
+	_end(id)
+
+func fire_held_for_test() -> bool:
+	return fire_id != -1
+
 func set_paused(v: bool) -> void:
-	paused=v
+	paused = v
 	queue_redraw()

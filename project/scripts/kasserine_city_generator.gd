@@ -44,6 +44,16 @@ var mat_mountain: StandardMaterial3D
 var mat_skyline: StandardMaterial3D
 var mat_car_paints: Array[StandardMaterial3D] = []
 var mat_canopy: Array[StandardMaterial3D] = []
+var mat_white: StandardMaterial3D
+var mat_dirt: StandardMaterial3D
+var mat_cloud: StandardMaterial3D
+var mat_sun_disc: StandardMaterial3D
+var mat_sign_blue: StandardMaterial3D
+var mat_tyre: StandardMaterial3D
+var mat_bollard: StandardMaterial3D
+var mat_cloth: Array[StandardMaterial3D] = []
+var mat_fruit: Array[StandardMaterial3D] = []
+var _dust: Array = []
 
 func _ready() -> void:
 	rng.seed = seed
@@ -106,6 +116,25 @@ func _setup_materials() -> void:
 		mat_car_paints.append(ProceduralTextures.flat_material(c, 0.5))
 	for c in [Color(0.75, 0.30, 0.20), Color(0.20, 0.55, 0.55), Color(0.85, 0.65, 0.25), Color(0.55, 0.30, 0.45)]:
 		mat_canopy.append(ProceduralTextures.flat_material(c, 0.9))
+	mat_white = ProceduralTextures.flat_material(Color(0.92, 0.92, 0.88), 0.85)
+	mat_dirt = ProceduralTextures.flat_material(Color(0.58, 0.47, 0.32), 1.0)
+	mat_sign_blue = ProceduralTextures.flat_material(Color(0.12, 0.30, 0.55), 0.7)
+	mat_tyre = ProceduralTextures.flat_material(Color(0.10, 0.10, 0.11), 0.95)
+	mat_bollard = ProceduralTextures.flat_material(Color(0.85, 0.65, 0.15), 0.8)
+	mat_cloud = StandardMaterial3D.new()
+	mat_cloud.albedo_color = Color(1.0, 1.0, 1.0, 0.85)
+	mat_cloud.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat_cloud.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat_sun_disc = StandardMaterial3D.new()
+	mat_sun_disc.albedo_color = Color(1.0, 0.92, 0.65)
+	mat_sun_disc.emission_enabled = true
+	mat_sun_disc.emission = Color(1.0, 0.85, 0.45)
+	mat_sun_disc.emission_energy_multiplier = 2.0
+	mat_sun_disc.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for c in [Color(0.75, 0.30, 0.20), Color(0.20, 0.55, 0.55), Color(0.85, 0.65, 0.25), Color(0.92, 0.88, 0.80)]:
+		mat_cloth.append(ProceduralTextures.flat_material(c, 0.95))
+	for c in [Color(0.85, 0.45, 0.10), Color(0.45, 0.65, 0.20), Color(0.75, 0.20, 0.20)]:
+		mat_fruit.append(ProceduralTextures.flat_material(c, 0.9))
 
 # ---------------------------------------------------------------- build
 
@@ -117,8 +146,19 @@ func _build_city() -> void:
 	_build_props()
 	_build_checkpoint()
 	_build_landmark_and_horizon()
+	_build_sky_detail()
 	_build_sun()
+	_build_dust()
 	_collect_spawn_points()
+
+func _process(delta: float) -> void:
+	# Drifting dust motes near the ground (cheap CPU quads, no particles).
+	for d in _dust:
+		var node: MeshInstance3D = d["node"]
+		var base: Vector3 = d["base"]
+		var t: float = d["t"] + delta * d["speed"]
+		d["t"] = t
+		node.position = base + Vector3(sin(t * 0.7) * 3.0, sin(t * 1.3) * 0.6 + 0.8, cos(t * 0.5) * 3.0)
 
 func _build_ground() -> void:
 	var ground := StaticBody3D.new()
@@ -160,6 +200,24 @@ func _build_roads() -> void:
 		_flat_box(roads, "LineXb_%d" % int(x), Vector3(x, 0.09, 95), Vector3(0.4, 0.02, 130), mat_line)
 		_flat_box(roads, "LineZa_%d" % int(x), Vector3(-95, 0.09, x), Vector3(130, 0.02, 0.4), mat_line)
 		_flat_box(roads, "LineZb_%d" % int(x), Vector3(95, 0.09, x), Vector3(130, 0.02, 0.4), mat_line)
+		# Tyre tracks: two dark strips along each road (inside the loop).
+		_flat_box(roads, "TrackX_%d" % int(x), Vector3(x - 1.8, 0.05, 0), Vector3(0.9, 0.02, city_half * 2.0), mat_dirt)
+		_flat_box(roads, "TrackZ_%d" % int(x), Vector3(0, 0.05, x - 1.8), Vector3(city_half * 2.0, 0.02, 0.9), mat_dirt)
+	# Crosswalks + stop lines at every intersection outside the plaza.
+	# (Once, not per road — this block is outside the `for x` loop above.)
+	for ix in ROAD_POS:
+		for iz in ROAD_POS:
+			if absf(ix) < 30.0 and absf(iz) < 30.0:
+				continue
+			for k in range(4):
+				_flat_box(roads, "Cross_%d_%d_%d" % [int(ix), int(iz), k], Vector3(ix - 3.6 + float(k) * 2.4, 0.10, iz + 6.5), Vector3(1.1, 0.02, 3.2), mat_white)
+			_flat_box(roads, "Stop_%d_%d" % [int(ix), int(iz)], Vector3(ix, 0.10, iz - 7.5), Vector3(8.0, 0.02, 0.5), mat_white)
+	# Dirt patches on the sand between blocks.
+	for i in range(16):
+		var dp := Vector3(rng.randf_range(-140.0, 140.0), 0.02, rng.randf_range(-140.0, 140.0))
+		if _on_road(dp.x, dp.z) or Vector2(dp.x, dp.z).length() < 26.0:
+			continue
+		_flat_box(roads, "Dirt_%d" % i, dp, Vector3(rng.randf_range(3.0, 7.0), 0.02, rng.randf_range(3.0, 7.0)), mat_dirt)
 
 func _block_centres() -> Array[Vector2]:
 	var centres: Array[Vector2] = []
@@ -266,6 +324,27 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 	# Awning over the street-facing door on low buildings.
 	if size.y < 9.0 and rng.randf() < 0.6:
 		_flat_box(body, "Awning", Vector3(0, 2.6, size.z * 0.5 + 0.7), Vector3(3.2, 0.15, 1.4), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
+	# Balcony on taller buildings (slab + railing).
+	if size.y >= 8.0 and rng.randf() < 0.5:
+		var by := rng.randf_range(3.5, size.y - 1.5)
+		_flat_box(body, "Balcony", Vector3(0, by, size.z * 0.5 + 0.8), Vector3(3.4, 0.18, 1.6), mat_sidewalk)
+		_flat_box(body, "BalconyRail", Vector3(0, by + 0.6, size.z * 0.5 + 1.5), Vector3(3.4, 0.9, 0.08), mat_dark)
+	# Satellite dish on the roof.
+	if rng.randf() < 0.3:
+		var dish := MeshInstance3D.new()
+		dish.name = "Dish"
+		dish.mesh = _unit_sphere
+		dish.scale = Vector3(0.9, 0.25, 0.9)
+		dish.position = Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 0.5, rng.randf_range(-size.z * 0.3, size.z * 0.3))
+		dish.rotation_degrees = Vector3(-35, 0, 0)
+		dish.material_override = mat_metal
+		body.add_child(dish)
+	# Laundry line with coloured cloth on low medina roofs.
+	if size.y < 7.0 and rng.randf() < 0.35:
+		var ly := size.y + 0.9
+		_flat_box(body, "LaundryLine", Vector3(0, ly, 0), Vector3(size.x * 0.7, 0.04, 0.04), mat_dark)
+		for ci in range(3):
+			_flat_box(body, "Cloth_%d" % ci, Vector3(-size.x * 0.2 + float(ci) * size.x * 0.2, ly - 0.35, 0), Vector3(0.9, 0.7, 0.05), mat_cloth[rng.randi_range(0, mat_cloth.size() - 1)])
 	parent.add_child(body)
 
 func _build_plaza_and_market() -> void:
@@ -308,6 +387,14 @@ func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> voi
 	stall.rotation.y = -ang
 	_flat_box(stall, "Counter", Vector3(0, 0.55, 0), Vector3(2.4, 1.1, 1.3), mat_trunk)
 	_flat_box(stall, "Goods", Vector3(0, 1.2, 0), Vector3(2.0, 0.25, 1.0), ProceduralTextures.flat_material(Color(0.85, 0.60, 0.25), 0.9))
+	for bi in range(3):
+		var basket := MeshInstance3D.new()
+		basket.name = "Basket_%d" % bi
+		basket.mesh = _unit_cyl
+		basket.scale = Vector3(0.55, 0.3, 0.55)
+		basket.position = Vector3(-0.7 + float(bi) * 0.7, 1.45, 0)
+		basket.material_override = mat_fruit[bi % mat_fruit.size()]
+		stall.add_child(basket)
 	_flat_box(stall, "Canopy", Vector3(0, 2.3, 0), Vector3(2.8, 0.12, 1.8), canopy_mat)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -355,6 +442,18 @@ func _palm(parent: Node, pos: Vector3) -> void:
 	canopy.position.y = 4.5
 	canopy.material_override = mat_palm
 	palm.add_child(canopy)
+	# Fronds: flattened spheres fanning out from the crown.
+	for fi in range(5):
+		var ang := TAU * float(fi) / 5.0
+		var frond := MeshInstance3D.new()
+		frond.name = "Frond_%d" % fi
+		frond.mesh = _unit_sphere
+		frond.scale = Vector3(2.6, 0.35, 0.9)
+		frond.position = Vector3(cos(ang) * 1.6, 4.9, sin(ang) * 1.6)
+		frond.rotation.y = -ang
+		frond.rotation.z = 0.35
+		frond.material_override = mat_palm
+		palm.add_child(frond)
 	var col := CollisionShape3D.new()
 	var shape := CylinderShape3D.new()
 	shape.radius = 0.3
@@ -435,6 +534,46 @@ func _build_props() -> void:
 	for i in range(20):
 		var p := _random_off_road_point()
 		_prop_box(props, "Crate", p, Vector3(rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.3)), mat_trunk, true, rng.randf() * TAU)
+	# Barrels, tyre stacks and bollards.
+	for i in range(10):
+		var bp := _random_off_road_point()
+		var barrel := MeshInstance3D.new()
+		barrel.name = "Barrel"
+		barrel.mesh = _unit_cyl
+		barrel.scale = Vector3(0.8, 1.1, 0.8)
+		barrel.position = bp + Vector3(0, 0.55, 0)
+		barrel.material_override = mat_barrier if i % 3 == 0 else mat_metal
+		props.add_child(barrel)
+	for i in range(8):
+		var tp := _random_off_road_point()
+		for ti in range(2):
+			var tyre := MeshInstance3D.new()
+			tyre.name = "Tyre"
+			tyre.mesh = _unit_cyl
+			tyre.scale = Vector3(0.9, 0.28, 0.9)
+			tyre.position = tp + Vector3(0, 0.15 + float(ti) * 0.28, 0)
+			tyre.material_override = mat_tyre
+			props.add_child(tyre)
+	for i in range(12):
+		var ang := TAU * float(i) / 12.0
+		var boll := MeshInstance3D.new()
+		boll.name = "Bollard"
+		boll.mesh = _unit_cyl
+		boll.scale = Vector3(0.3, 0.9, 0.3)
+		boll.position = Vector3(cos(ang) * 25.5, 0.45, sin(ang) * 25.5)
+		boll.material_override = mat_bollard
+		props.add_child(boll)
+	# Street name signs on poles at 8 intersections.
+	var sign_spots: Array[Vector3] = [Vector3(56, 0, 56), Vector3(-56, 0, 56), Vector3(56, 0, -56), Vector3(-56, 0, -56), Vector3(6, 0, 106), Vector3(-106, 0, 6), Vector3(106, 0, -6), Vector3(-6, 0, -106)]
+	for sp in sign_spots:
+		var pole := MeshInstance3D.new()
+		pole.name = "SignPole"
+		pole.mesh = _unit_cyl
+		pole.scale = Vector3(0.14, 2.6, 0.14)
+		pole.position = sp + Vector3(0, 1.3, 0)
+		pole.material_override = mat_dark
+		props.add_child(pole)
+		_flat_box(props, "Sign", sp + Vector3(0, 2.5, 0), Vector3(1.6, 0.5, 0.08), mat_sign_blue)
 	for i in range(14):
 		var p := _random_off_road_point()
 		var rock := MeshInstance3D.new()
@@ -535,6 +674,47 @@ func _build_landmark_and_horizon() -> void:
 		m.position = Vector3(cos(ang) * r, h * 0.5 - 4.0, sin(ang) * r)
 		m.material_override = mat_mountain
 		mountains.add_child(m)
+
+func _build_sky_detail() -> void:
+	# Sun disc + soft procedural clouds. BG_COLOR environment stays
+	# (v0.2.1 black-screen fix) — these are plain unshaded meshes, so
+	# the sky is no longer a flat colour but cannot render black.
+	var sky := Node3D.new()
+	sky.name = "SkyDetail"
+	add_child(sky)
+	var disc := MeshInstance3D.new()
+	disc.name = "SunDisc"
+	disc.mesh = _unit_sphere
+	disc.scale = Vector3(14.0, 14.0, 2.0)
+	disc.position = Vector3(170.0, 130.0, -90.0)
+	disc.rotation_degrees = Vector3(0, -35, 0)
+	disc.material_override = mat_sun_disc
+	sky.add_child(disc)
+	for i in range(8):
+		var cloud := MeshInstance3D.new()
+		cloud.name = "Cloud_%d" % i
+		cloud.mesh = _unit_sphere
+		cloud.scale = Vector3(rng.randf_range(16.0, 30.0), rng.randf_range(2.5, 4.5), rng.randf_range(7.0, 12.0))
+		cloud.position = Vector3(rng.randf_range(-220.0, 220.0), rng.randf_range(85.0, 125.0), rng.randf_range(-220.0, 220.0))
+		cloud.material_override = mat_cloud
+		sky.add_child(cloud)
+
+func _build_dust() -> void:
+	var dust_mat := StandardMaterial3D.new()
+	dust_mat.albedo_color = Color(0.85, 0.75, 0.55, 0.5)
+	dust_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dust_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var dust_node := Node3D.new()
+	dust_node.name = "Dust"
+	add_child(dust_node)
+	for i in range(40):
+		var mote := MeshInstance3D.new()
+		mote.name = "Mote_%d" % i
+		mote.mesh = _unit_sphere
+		mote.scale = Vector3(0.22, 0.22, 0.22)
+		mote.material_override = dust_mat
+		dust_node.add_child(mote)
+		_dust.append({"node": mote, "base": Vector3(rng.randf_range(-70.0, 70.0), rng.randf_range(0.3, 3.0), rng.randf_range(-70.0, 70.0)), "t": rng.randf_range(0.0, 10.0), "speed": rng.randf_range(0.3, 0.8)})
 
 func _build_sun() -> void:
 	var sun := DirectionalLight3D.new()

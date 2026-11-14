@@ -40,6 +40,9 @@ static func asphalt_texture() -> ImageTexture:
 			var base := 0.16 + v * 0.07
 			img.set_pixel(x, y, Color(base, base, base + 0.008))
 	_speckle(img, rng, 900, Color(0.22, 0.22, 0.22), Color(0.10, 0.10, 0.10))
+	# Worn patches / cracks.
+	for pi in range(6):
+		_fill_rect(img, rng.randi_range(0, 220), rng.randi_range(0, 220), rng.randi_range(14, 36), rng.randi_range(8, 18), Color(0.11, 0.11, 0.11))
 	var tex := ImageTexture.create_from_image(img)
 	_cache["asphalt"] = tex
 	return tex
@@ -118,23 +121,37 @@ static func facade_texture(index: int) -> ImageTexture:
 			var v: float = n.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
 			var s := 0.94 + v * 0.10
 			img.set_pixel(x, y, Color(base.r * s, base.g * s, base.b * s))
-	# Windows: 3 columns x 4 rows, dark glass, some with shutters / AC box.
+	# Windows: 3 columns x 4 rows, dark glass, frames, shutters, AC boxes.
 	var cols := 3
 	var rows := 4
 	for r in range(rows):
 		for c in range(cols):
 			var wx := 12 + c * 38
 			var wy := 14 + r * 42
+			# Frame + glass + highlight.
 			_fill_rect(img, wx - 2, wy - 2, 24, 30, Color(0.25, 0.22, 0.20))
 			_fill_rect(img, wx, wy, 20, 26, Color(0.12, 0.16, 0.22))
-			# Glass highlight.
 			_fill_rect(img, wx + 2, wy + 2, 7, 9, Color(0.45, 0.55, 0.65))
-			if rng.randf() < 0.45:
+			# Cross mullion.
+			_fill_rect(img, wx + 9, wy, 2, 26, Color(0.25, 0.22, 0.20))
+			_fill_rect(img, wx, wy + 12, 20, 2, Color(0.25, 0.22, 0.20))
+			# Side shutters on about half the windows.
+			if rng.randf() < 0.5:
 				var sc := Color(0.35, 0.45, 0.35) if rng.randf() < 0.5 else Color(0.45, 0.38, 0.28)
-				_fill_rect(img, wx - 2, wy + 26, 24, 4, sc)
-	# Ground-floor door.
-	_fill_rect(img, 52, 168, 24, 24, Color(0.30, 0.22, 0.16))
-	_fill_rect(img, 54, 170, 20, 20, Color(0.20, 0.15, 0.11))
+				_fill_rect(img, wx - 8, wy, 5, 26, sc)
+				_fill_rect(img, wx + 23, wy, 5, 26, sc)
+			# AC box under some windows.
+			if rng.randf() < 0.35:
+				_fill_rect(img, wx + 2, wy + 28, 16, 8, Color(0.70, 0.70, 0.68))
+		# Balcony rail line on the second row.
+		if r == 1:
+			_fill_rect(img, 8, 14 + r * 42 + 34, 112, 3, Color(0.20, 0.18, 0.16))
+			for bx in range(8, 120, 12):
+				_fill_rect(img, bx, 14 + r * 42 + 34, 2, 8, Color(0.20, 0.18, 0.16))
+	# Ground-floor door with frame + step.
+	_fill_rect(img, 50, 166, 28, 26, Color(0.30, 0.22, 0.16))
+	_fill_rect(img, 54, 170, 20, 22, Color(0.20, 0.15, 0.11))
+	_fill_rect(img, 48, 190, 32, 2, Color(0.55, 0.50, 0.44))
 	var tex := ImageTexture.create_from_image(img)
 	_cache[key] = tex
 	return tex

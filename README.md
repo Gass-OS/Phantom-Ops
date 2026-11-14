@@ -1,8 +1,35 @@
 # Phantom-Ops
 
 Mobile FPS — **Phantom Ops: Kasserine Operations**. Godot 4.2, Mobile renderer,
-Android (arm64-v8a). No external art assets: the whole city, textures and
-weapon are generated procedurally in GDScript at runtime.
+Android (arm64-v8a). No external art assets: the whole city, textures, weapon
+and sounds are generated procedurally in GDScript at runtime.
+
+## v0.3 — Working FIRE, big HUD, sound, richer city
+
+- **FIRE fixed (was broken in v0.2.1)**: the HUD drew FIRE at one place and
+  tested taps in a different, hard-coded rectangle, so tapping the FIRE
+  centre actually jumped. Hit tests are now distance-to-centre tests
+  against the same shared layout the drawing uses, for FIRE / JUMP / RUN /
+  joystick / pause. Holding FIRE auto-fires (~8 shots/s, gated by the
+  0.12 s fire cooldown). Every shot also shows a tracer line + impact
+  puff, muzzle flash, recoil and camera kick, and ammo always decreases.
+- **Bigger HUD**: buttons are ~1.7x — FIRE radius ~72, JUMP ~56, RUN ~54,
+  joystick ~125, pause ~40 (scaled by viewport, 0.9–1.8x), with larger
+  fonts, health bar, status bar and ammo text. Buttons no longer overlap.
+- **Sound (new, no audio files)**: `scripts/sound_manager.gd` generates
+  every sound as 16-bit PCM at runtime — gunshot, reload clicks, hit blip,
+  kill two-tone, enemy death, hurt thud, UI click, wave horn, footsteps
+  and a looping desert-wind ambience. Mute toggle in the pause menu
+  (SOUND: ON/OFF), shared across scenes.
+- **Richer city**: crosswalks + stop lines at intersections, tyre tracks,
+  dirt patches, street-name signs, bollards, barrels, tyre stacks, market
+  baskets, palm fronds, balconies, satellite dishes, laundry lines,
+  facade shutters / mullions / AC boxes / balcony rails, sun disc + soft
+  clouds, and drifting dust motes. Rendering stays Mobile-safe
+  (colour background, no ProceduralSky / fog / ACES / MSAA — see v0.2.1).
+- **Detail elsewhere**: rifle viewmodel now has sight, handguard, magazine,
+  stock, suppressor and a left hand; enemies have arms, a vest plate and
+  a red headband stripe.
 
 ## v0.2.1 — Black-screen fix
 
@@ -55,7 +82,8 @@ now `float(side)` with an explicit `float` type). Version `0.2.1` (code 3).
 |---|---|
 | Left thumbstick | Move |
 | Drag right side | Look |
-| FIRE | Shoot (30-round mag, auto-reloads) |
+| FIRE | Shoot — tap or hold to auto-fire (30-round mag, auto-reloads) |
+| Ⅱ → SOUND | Toggle sound on/off in the pause menu |
 | JUMP | Jump |
 | RUN (hold) | Sprint |
 | Ⅱ | Pause — Resume / Main Menu |
@@ -83,7 +111,7 @@ Local APK (needs Android SDK 33 + export templates + Java 17):
 godot --headless --path project --export-debug "Android" build/PhantomOps.apk
 ```
 
-Package: `com.phantomops.kasserine`, version `0.2.1` (code 3), arm64-v8a,
+Package: `com.phantomops.kasserine`, version `0.3.0` (code 4), arm64-v8a,
 immersive mode.
 
 ## Project layout
@@ -91,7 +119,7 @@ immersive mode.
 ```
 project/
   project.godot            Godot 4.2, Mobile renderer, MSAA off, landscape
-  export_presets.cfg       Android preset, v0.2.1 / code 3
+  export_presets.cfg       Android preset, v0.3.0 / code 4
   scenes/
     main_menu.tscn         Sunset menu + DEPLOY
     main_game.tscn         WorldEnvironment, City, Player, EnemySpawner
@@ -99,7 +127,8 @@ project/
     kasserine_city_generator.gd   Procedural city (~300 m, seeded)
     procedural_textures.gd        Runtime ImageTextures + shared materials
     player.gd               Movement, ammo/reload, rifle viewmodel, HUD wiring
-    mobile_hud.gd           Touch controls + health/ammo/score/compass HUD
+    mobile_hud.gd           Touch controls + health/ammo/score/compass HUD (v0.3: big buttons, distance hit tests, hold-to-fire, sound toggle)
+    sound_manager.gd        Procedural sounds (WAV generated at runtime, no assets)
     enemy_ai.gd             Chases player, visible body, take_damage()
     enemy_spawner.gd        Waves, spawn points, score wiring
     game_manager.gd         Score/kills (+ score_changed signal)
