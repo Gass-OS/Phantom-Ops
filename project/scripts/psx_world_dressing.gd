@@ -78,7 +78,7 @@ func _decorate_building(body: StaticBody3D) -> void:
             continue
 
         for side in [-1.0, 1.0]:
-            var x := side * width * 0.27
+            var x: float = float(side) * width * 0.27
             var path := WINDOW
 
             if is_district and int(floor) == 0 and side > 0.0:

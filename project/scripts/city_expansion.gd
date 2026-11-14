@@ -99,7 +99,7 @@ func _create_building(at: Vector3, seed_value: int) -> void:
 	var floors := int(height / 3.2)
 	for floor in range(1, floors):
 		for side in [-1.0, 1.0]:
-			var wx := side * width * 0.27
+			var wx: float = float(side) * width * 0.27
 			var wy := floor * 3.0
 			_add_box_to(body, "WindowFrame", Vector3(2.0, 1.65, 0.18), Vector3(wx, wy, -depth * 0.505), trim_mat)
 			_add_box_to(body, "WindowGlass", Vector3(1.65, 1.34, 0.08), Vector3(wx, wy, -depth * 0.515), glass_mat)

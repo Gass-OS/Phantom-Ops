@@ -4,6 +4,23 @@ Mobile FPS — **Phantom Ops: Kasserine Operations**. Godot 4.2, Mobile renderer
 Android (arm64-v8a). No external art assets: the whole city, textures and
 weapon are generated procedurally in GDScript at runtime.
 
+## v0.2.1 — Black-screen fix
+
+The v0.2 APK ran, and the HUD drew perfectly, but the 3D view was pure
+black on Android. Root cause: the Sky-based `WorldEnvironment`
+(`ProceduralSkyMaterial` + Sky ambient + fog + ACES tonemapping) does not
+render on the Mobile renderer on device, even though the scene runs fine
+headless. Fix: `main_game.tscn` now uses a Mobile-safe colour background
+(warm sky blue) + colour ambient (0.9), Filmic tonemapping, fog off, glow
+off; the warm directional sun (energy 1.15, shadows on) is unchanged, and
+`kasserine_city_generator.gd` creates the same environment at runtime if
+none exists. Also fixed: landscape orientation (`orientation=0`, was
+portrait `1` — the v0.2 screenshot was a tall portrait phone), MSAA 3D off
+(was 2x), camera `fov=75, near=0.05, far=500`, and parse errors in
+`city_expansion.gd:102` / `psx_world_dressing.gd:81`
+(`Cannot infer type` — `side` from an untyped array literal is a Variant,
+now `float(side)` with an explicit `float` type). Version `0.2.1` (code 3).
+
 ## v0.2 — Kasserine Rebuilt
 
 - **Real city, ~300×300 m**: grid streets with asphalt roads, lane markings
@@ -19,9 +36,10 @@ weapon are generated procedurally in GDScript at runtime.
   where it matters, spawn kept clear.
 - **Graphics**: procedural runtime textures (`scripts/procedural_textures.gd`)
   — asphalt, sand, sidewalk tiles, plaza tiles, facades with windows and
-  shutters. Golden-hour `ProceduralSkyMaterial`, warm directional sun with
-  shadows, light haze fog, ACES tonemapping, glow off, MSAA 2x
-  (Mobile renderer). Distant skyline silhouette, a minaret landmark, and a
+  shutters. Warm directional sun with shadows, glow off (Mobile renderer).
+  (v0.2 shipped a `ProceduralSkyMaterial` + fog + ACES here — that rendered
+  black on Android, see v0.2.1 above.) Distant skyline silhouette, a minaret
+  landmark, and a
   mountain ring (Jebel Chambi) so the city reads from afar.
 - **Gameplay**: enemy waves (8+, growing to 12) spawned on streets/plaza
   away from the player, wired to `GameManager` score/kills; procedural rifle
@@ -65,15 +83,15 @@ Local APK (needs Android SDK 33 + export templates + Java 17):
 godot --headless --path project --export-debug "Android" build/PhantomOps.apk
 ```
 
-Package: `com.phantomops.kasserine`, version `0.2.0` (code 2), arm64-v8a,
+Package: `com.phantomops.kasserine`, version `0.2.1` (code 3), arm64-v8a,
 immersive mode.
 
 ## Project layout
 
 ```
 project/
-  project.godot            Godot 4.2, Mobile renderer, MSAA 2x
-  export_presets.cfg       Android preset, v0.2.0 / code 2
+  project.godot            Godot 4.2, Mobile renderer, MSAA off, landscape
+  export_presets.cfg       Android preset, v0.2.1 / code 3
   scenes/
     main_menu.tscn         Sunset menu + DEPLOY
     main_game.tscn         WorldEnvironment, City, Player, EnemySpawner

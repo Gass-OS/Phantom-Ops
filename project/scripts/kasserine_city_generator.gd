@@ -57,7 +57,31 @@ func _ready() -> void:
 	_cone.bottom_radius = 0.5
 	_cone.height = 1.0
 	_setup_materials()
+	_ensure_mobile_environment()
 	_build_city()
+
+# v0.2.1 black-screen safety net: if the scene has no WorldEnvironment
+# (deleted, or a scene variant), create the same Mobile-safe colour
+# environment at runtime so the 3D view can never be black. Matches the
+# WorldEnvironment in scenes/main_game.tscn and the fallback in
+# scripts/main_game.gd. Does nothing when one already exists.
+func _ensure_mobile_environment() -> void:
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null and not scene_root.find_children("*", "WorldEnvironment", true, false).is_empty():
+		return
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.53, 0.67, 0.84)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.85, 0.82, 0.75)
+	environment.ambient_light_energy = 0.9
+	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.glow_enabled = false
+	environment.fog_enabled = false
+	var world := WorldEnvironment.new()
+	world.name = "MobileEnvironmentFallback"
+	world.environment = environment
+	add_child(world)
 
 func _setup_materials() -> void:
 	mat_asphalt = ProceduralTextures.asphalt_material()
