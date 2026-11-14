@@ -1,103 +1,51 @@
 extends CharacterBody3D
-
 signal health_changed(current, maximum)
 signal player_died
-
-@export var walk_speed := 5.4
-@export var sprint_speed := 8.7
-@export var jump_velocity := 4.8
+@export var walk_speed := 5.0
+@export var sprint_speed := 8.5
+@export var jump_velocity := 4.5
 @export var max_health := 100.0
-@export var look_sensitivity := 0.0032
-
+@export var look_sensitivity := 0.0035
+@export var mag_size := 30
+@export var reload_time := 1.4
+@export var fire_cooldown := 0.12
 var current_health := 100.0
 var is_dead := false
-var gravity := 18.0
+var gravity := 9.8
 var mobile_move := Vector2.ZERO
 var mobile_sprinting := false
 var mobile_hud
 var is_paused := false
-var fire_cooldown := 0.0
-var gait_phase := 0.0
-var visual_left_leg: Node3D
-var visual_right_leg: Node3D
-var visual_left_arm: Node3D
-var visual_right_arm: Node3D
+var ammo := 30
+var reloading := false
+var _reload_timer := 0.0
+var _cooldown_timer := 0.0
+var _flash_timer := 0.0
+var _recoil := 0.0
+var _viewmodel: Node3D
+var _muzzle_flash: MeshInstance3D
+var _muzzle_light: OmniLight3D
 @onready var camera: Camera3D = $Head/Camera3D
-
 func _ready() -> void:
-	add_to_group("player")
 	current_health = max_health
-	floor_snap_length = 0.45
-	floor_stop_on_slope = true
-	floor_max_angle = deg_to_rad(48.0)
-	safe_margin = 0.035
-	_build_player_visual()
-	camera.position = Vector3(0, 1.8, 5.0)
-	camera.rotation = Vector3(deg_to_rad(-13.0), 0.0, 0.0)
-	camera.current = true
-	_create_mobile_hud()
-	player_died.connect(_on_player_died)
-
-func _build_player_visual() -> void:
-	if has_node("SoldierVisual"):
-		return
-	var root := Node3D.new()
-	root.name = "SoldierVisual"
-	add_child(root)
-	var uniform := StandardMaterial3D.new()
-	uniform.albedo_color = Color(0.12, 0.19, 0.22)
-	uniform.roughness = 0.82
-	var armor := StandardMaterial3D.new()
-	armor.albedo_color = Color(0.22, 0.29, 0.29)
-	armor.metallic = 0.12
-	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color(0.58, 0.39, 0.27)
-	var boots := StandardMaterial3D.new()
-	boots.albedo_color = Color(0.045, 0.055, 0.06)
-	_add_capsule(root, "Torso", 0.66, 0.92, Vector3(0, 0.98, 0), uniform)
-	_add_capsule(root, "Head", 0.25, 0.34, Vector3(0, 1.65, 0), skin)
-	_add_capsule(root, "Vest", 0.70, 0.64, Vector3(0, 1.04, -0.035), armor)
-	_add_box(root, "LeftLeg", Vector3(0.24, 0.72, 0.28), Vector3(-0.19, 0.38, 0), uniform)
-	_add_box(root, "RightLeg", Vector3(0.24, 0.72, 0.28), Vector3(0.19, 0.38, 0), uniform)
-	_add_box(root, "LeftBoot", Vector3(0.27, 0.16, 0.42), Vector3(-0.19, 0.08, -0.07), boots)
-	_add_box(root, "RightBoot", Vector3(0.27, 0.16, 0.42), Vector3(0.19, 0.08, -0.07), boots)
-	_add_capsule(root, "LeftArm", 0.13, 0.70, Vector3(-0.43, 1.04, -0.02), uniform)
-	_add_capsule(root, "RightArm", 0.13, 0.70, Vector3(0.43, 1.04, -0.02), uniform)
-	var visor := StandardMaterial3D.new()
-	visor.albedo_color = Color(0.035, 0.07, 0.085)
-	_add_box(root, "HelmetVisor", Vector3(0.40, 0.10, 0.29), Vector3(0, 1.76, -0.045), visor)
-	root.position.y = -0.9
-	visual_left_leg = root.get_node_or_null("LeftLeg")
-	visual_right_leg = root.get_node_or_null("RightLeg")
-	visual_left_arm = root.get_node_or_null("LeftArm")
-	visual_right_arm = root.get_node_or_null("RightArm")
-
-func _add_capsule(parent: Node3D, node_name: String, radius: float, height: float, pos: Vector3, mat: Material) -> void:
-	var mesh := CapsuleMesh.new()
-	mesh.radius = radius
-	mesh.height = height
-	mesh.material = mat
-	var visual := MeshInstance3D.new()
-	visual.name = node_name
-	visual.mesh = mesh
-	visual.position = pos
-	parent.add_child(visual)
-
-func _add_box(parent: Node3D, node_name: String, dimensions: Vector3, pos: Vector3, mat: Material) -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = dimensions
-	mesh.material = mat
-	var visual := MeshInstance3D.new()
-	visual.name = node_name
-	visual.mesh = mesh
-	visual.position = pos
-	parent.add_child(visual)
-
+	ammo = mag_size
+	_create_viewmodel()
+	# Deferred: adding the HUD layer to the root during scene setup
+	# fails ("parent node is busy setting up children").
+	call_deferred("_create_mobile_hud")
+	if is_instance_valid(GameManager):
+		GameManager.reset_game()
+		GameManager.score_changed.connect(_on_score_changed)
+	_update_hud_all()
 func _create_mobile_hud() -> void:
+	# Fix: the HUD layer lives on the root, outside the scene, so a scene
+	# reload used to leave the old HUD behind and stack a second one.
+	var old := get_tree().root.get_node_or_null("MobileHUDLayer")
+	if old != null:
+		old.queue_free()
 	var layer := CanvasLayer.new()
 	layer.name = "MobileHUDLayer"
 	layer.layer = 10
-	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().root.add_child(layer)
 	mobile_hud = Control.new()
 	mobile_hud.name = "MobileHUD"
@@ -111,73 +59,191 @@ func _create_mobile_hud() -> void:
 	mobile_hud.resume_pressed.connect(_on_resume)
 	mobile_hud.menu_pressed.connect(_on_menu)
 	mobile_hud.sprint_changed.connect(_on_sprint)
-
-func _on_mobile_move(value: Vector2) -> void: mobile_move = value
-func _on_mobile_look(value: Vector2) -> void:
-	rotate_y(-value.x * look_sensitivity)
-	camera.rotation.x = clampf(camera.rotation.x - value.y * look_sensitivity, deg_to_rad(-65), deg_to_rad(28))
+	_update_hud_all()
+func _on_score_changed(score: int, kills: int) -> void:
+	if mobile_hud != null and mobile_hud.has_method("set_score"):
+		mobile_hud.set_score(score, kills)
+func _create_viewmodel() -> void:
+	# Simple procedural rifle, attached to the camera. No external assets.
+	_viewmodel = Node3D.new()
+	_viewmodel.name = "Viewmodel"
+	_viewmodel.position = Vector3(0.28, -0.24, -0.5)
+	camera.add_child(_viewmodel)
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color(0.13, 0.13, 0.15)
+	metal.roughness = 0.45
+	metal.metallic = 0.6
+	var grip_mat := StandardMaterial3D.new()
+	grip_mat.albedo_color = Color(0.20, 0.16, 0.12)
+	grip_mat.roughness = 0.9
+	var parts: Array = [
+		[Vector3(0, 0, 0), Vector3(0.09, 0.13, 0.55), metal],
+		[Vector3(0, 0.02, -0.38), Vector3(0.05, 0.05, 0.30), metal],
+		[Vector3(0, 0.09, -0.05), Vector3(0.03, 0.05, 0.04), metal],
+		[Vector3(0, -0.10, 0.12), Vector3(0.07, 0.14, 0.10), grip_mat],
+		[Vector3(0, -0.06, -0.18), Vector3(0.06, 0.10, 0.08), grip_mat],
+	]
+	for p in parts:
+		var mi := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = p[1]
+		box.material = p[2]
+		mi.mesh = box
+		mi.position = p[0]
+		_viewmodel.add_child(mi)
+	var barrel := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.025
+	cyl.bottom_radius = 0.025
+	cyl.height = 0.30
+	cyl.material = metal
+	barrel.mesh = cyl
+	barrel.rotation_degrees = Vector3(90, 0, 0)
+	barrel.position = Vector3(0, 0.02, -0.55)
+	_viewmodel.add_child(barrel)
+	# Muzzle flash: emissive quad + a short-lived light, hidden by default.
+	var flash_mat := StandardMaterial3D.new()
+	flash_mat.albedo_color = Color(1.0, 0.8, 0.35)
+	flash_mat.emission_enabled = true
+	flash_mat.emission = Color(1.0, 0.75, 0.25)
+	flash_mat.emission_energy_multiplier = 3.0
+	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_muzzle_flash = MeshInstance3D.new()
+	var flash_mesh := SphereMesh.new()
+	flash_mesh.radius = 0.09
+	flash_mesh.height = 0.18
+	flash_mesh.material = flash_mat
+	_muzzle_flash.mesh = flash_mesh
+	_muzzle_flash.position = Vector3(0, 0.02, -0.72)
+	_muzzle_flash.visible = false
+	_viewmodel.add_child(_muzzle_flash)
+	_muzzle_light = OmniLight3D.new()
+	_muzzle_light.light_color = Color(1.0, 0.8, 0.45)
+	_muzzle_light.light_energy = 0.0
+	_muzzle_light.omni_range = 6.0
+	_muzzle_light.position = Vector3(0, 0.02, -0.72)
+	_viewmodel.add_child(_muzzle_light)
+func _process(delta: float) -> void:
+	if _cooldown_timer > 0.0:
+		_cooldown_timer -= delta
+	if _flash_timer > 0.0:
+		_flash_timer -= delta
+		if _flash_timer <= 0.0:
+			_muzzle_flash.visible = false
+			_muzzle_light.light_energy = 0.0
+	if reloading:
+		_reload_timer -= delta
+		if _reload_timer <= 0.0:
+			reloading = false
+			ammo = mag_size
+			_update_hud_all()
+	if _recoil > 0.0:
+		_recoil = maxf(0.0, _recoil - delta * 0.6)
+		_viewmodel.position.z = -0.5 + _recoil * 0.12
+	if mobile_hud != null and mobile_hud.has_method("set_compass"):
+		mobile_hud.set_compass(rotation.y)
+func _on_mobile_move(v: Vector2) -> void:
+	mobile_move = v
+func _on_mobile_look(v: Vector2) -> void:
+	if is_paused or is_dead:
+		return
+	rotate_y(-v.x * look_sensitivity)
+	camera.rotation.x = clampf(camera.rotation.x - v.y * look_sensitivity, deg_to_rad(-80), deg_to_rad(80))
 func _on_mobile_jump() -> void:
-	if is_on_floor(): velocity.y = jump_velocity
+	if is_paused or is_dead:
+		return
+	if is_on_floor():
+		velocity.y = jump_velocity
 func _on_mobile_fire() -> void:
-	if fire_cooldown > 0.0: return
-	fire_cooldown = 0.22
-	var query := PhysicsRayQueryParameters3D.create(camera.global_position, camera.global_position - camera.global_transform.basis.z * 95.0)
-	query.exclude = [self]
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		var target = hit.get("collider")
-		if target != null and target.has_method("take_damage"):
-			target.take_damage(34.0)
-func _on_sprint(value: bool) -> void: mobile_sprinting = value
+	if is_paused or is_dead or reloading:
+		return
+	if _cooldown_timer > 0.0:
+		return
+	if ammo <= 0:
+		_start_reload()
+		return
+	_cooldown_timer = fire_cooldown
+	ammo -= 1
+	_flash_timer = 0.06
+	_muzzle_flash.visible = true
+	_muzzle_flash.scale = Vector3(randf_range(0.8, 1.3), randf_range(0.8, 1.3), randf_range(0.8, 1.3))
+	_muzzle_light.light_energy = 2.0
+	_recoil = 1.0
+	camera.rotation.x = clampf(camera.rotation.x + 0.012, deg_to_rad(-80), deg_to_rad(80))
+	var q := PhysicsRayQueryParameters3D.create(camera.global_position, camera.global_position - camera.global_transform.basis.z * 100.0)
+	q.exclude = [self]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty() and hit.collider.has_method("take_damage"):
+		hit.collider.take_damage(25.0)
+		if mobile_hud != null and mobile_hud.has_method("show_hitmarker"):
+			mobile_hud.show_hitmarker()
+	if ammo <= 0:
+		_start_reload()
+	else:
+		_update_hud_all()
+func _start_reload() -> void:
+	if reloading or ammo == mag_size:
+		return
+	reloading = true
+	_reload_timer = reload_time
+	_update_hud_all()
+func _on_sprint(v: bool) -> void:
+	mobile_sprinting = v
 func _on_pause() -> void:
 	is_paused = true
 	set_physics_process(false)
-	mobile_hud.set_paused(true)
+	if mobile_hud != null:
+		mobile_hud.set_paused(true)
 func _on_resume() -> void:
 	is_paused = false
 	set_physics_process(true)
-	mobile_hud.set_paused(false)
+	if mobile_hud != null:
+		mobile_hud.set_paused(false)
 func _on_menu() -> void:
-	if is_instance_valid(mobile_hud) and mobile_hud.get_parent() != null:
-		mobile_hud.get_parent().queue_free()
-	get_tree().paused = false
+	if mobile_hud != null:
+		var layer: Node = mobile_hud.get_parent()
+		if layer != null:
+			layer.queue_free()
+	if is_instance_valid(GameManager):
+		GameManager.reset_game()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
-
+func _update_hud_all() -> void:
+	if mobile_hud == null:
+		return
+	if mobile_hud.has_method("set_health"):
+		mobile_hud.set_health(current_health, max_health)
+	if mobile_hud.has_method("set_ammo"):
+		mobile_hud.set_ammo(ammo, mag_size, reloading)
+	if mobile_hud.has_method("set_score") and is_instance_valid(GameManager):
+		mobile_hud.set_score(GameManager.score, GameManager.kills)
 func _physics_process(delta: float) -> void:
-	if is_dead or is_paused: return
-	fire_cooldown = maxf(0.0, fire_cooldown-delta)
+	if is_dead or is_paused:
+		return
 	if not is_on_floor():
-		velocity.y = maxf(velocity.y - gravity * delta, -32.0)
-	else:
-		if velocity.y < 0.0:
-			velocity.y = 0.0
+		velocity.y -= gravity * delta
 	var input_dir := mobile_move
-	if OS.get_name() not in ["Android","iOS"]:
-		input_dir = Input.get_vector("ui_left","ui_right","ui_up","ui_down")
-	var direction := (transform.basis * Vector3(input_dir.x,0,input_dir.y)).normalized()
+	if OS.get_name() not in ["Android", "iOS"]:
+		input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	var direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	var speed := sprint_speed if mobile_sprinting or Input.is_action_pressed("ui_accept") else walk_speed
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
-	if OS.get_name() not in ["Android","iOS"] and Input.is_action_just_pressed("ui_select") and is_on_floor():
+	if OS.get_name() not in ["Android", "iOS"] and Input.is_action_just_pressed("ui_select") and is_on_floor():
 		velocity.y = jump_velocity
 	move_and_slide()
-	var planar_speed := Vector2(velocity.x, velocity.z).length()
-	if planar_speed > 0.15:
-		gait_phase += delta * (8.0 if mobile_sprinting else 5.8)
-	var gait := sin(gait_phase) * clampf(planar_speed / sprint_speed, 0.0, 1.0) * 0.52
-	if is_instance_valid(visual_left_leg): visual_left_leg.rotation.x = lerpf(visual_left_leg.rotation.x, gait, delta * 12.0)
-	if is_instance_valid(visual_right_leg): visual_right_leg.rotation.x = lerpf(visual_right_leg.rotation.x, -gait, delta * 12.0)
-	if is_instance_valid(visual_left_arm): visual_left_arm.rotation.x = lerpf(visual_left_arm.rotation.x, -gait * 0.65, delta * 10.0)
-	if is_instance_valid(visual_right_arm): visual_right_arm.rotation.x = lerpf(visual_right_arm.rotation.x, gait * 0.65, delta * 10.0)
-
-func take_damage(amount: float) -> void:
-	if is_dead: return
-	current_health = maxf(0.0,current_health-amount)
-	health_changed.emit(current_health,max_health)
-	if current_health <= 0.0:
+func take_damage(damage: float) -> void:
+	if is_dead:
+		return
+	current_health = maxf(0.0, current_health - damage)
+	health_changed.emit(current_health, max_health)
+	_update_hud_all()
+	if current_health <= 0:
 		is_dead = true
 		player_died.emit()
-
-func _on_player_died() -> void:
-	if is_instance_valid(mobile_hud):
-		mobile_hud.set_paused(true)
+func _exit_tree() -> void:
+	# Scene change must not leak the root-level HUD into the next scene.
+	if get_tree() == null:
+		return
+	var old := get_tree().root.get_node_or_null("MobileHUDLayer")
+	if old != null:
+		old.queue_free()

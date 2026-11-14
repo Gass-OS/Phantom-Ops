@@ -1,305 +1,538 @@
 extends Node3D
 class_name KasserineCityGenerator
+## Phantom Ops v0.2 — procedural Kasserine, ~300x300 m.
+## Grid streets, central plaza / market square, four districts:
+##   west  = old medina (dense, low, small footprints)
+##   east  = modern blocks (tall, large footprints)
+##   centre= market around the plaza
+##   north edge = checkpoint / military edge
+## Seeded (export `seed`) so every run builds the same city.
+## Shared meshes / materials only — no per-building unique materials.
 
-@export var city_size := Vector2(150.0, 150.0)
-@export_range(8, 40) var building_count := 24
-@export_range(2, 14) var zombie_count := 7
-@export var weather_cycle := true
+@export var seed: int = 20261114
+@export var city_half: float = 150.0
+@export var road_width: float = 10.0
 
-var player: Node3D
-var weather_timer := 0.0
-var weather_mode := 0
-var sun: DirectionalLight3D
-var world_environment: WorldEnvironment
-var rain_particles: GPUParticles3D
+const ROAD_POS: Array[float] = [-100.0, -50.0, 0.0, 50.0, 100.0]
+const PLAZA_HALF: float = 23.0
+const SPAWN_CLEAR: float = 14.0
 
-var sand := StandardMaterial3D.new()
-var asphalt := StandardMaterial3D.new()
-var sidewalk := StandardMaterial3D.new()
-var wall_materials: Array[StandardMaterial3D] = []
-var window_glass := StandardMaterial3D.new()
-var window_frame := StandardMaterial3D.new()
-var door_material := StandardMaterial3D.new()
-var lamp_glow := StandardMaterial3D.new()
+var rng := RandomNumberGenerator.new()
+var occupied: Array[Rect2] = []
+var spawn_points: Array[Vector3] = []
+
+# Shared unit meshes — props scale the instance, not the mesh.
+var _unit_box := BoxMesh.new()
+var _unit_cyl := CylinderMesh.new()
+var _unit_sphere := SphereMesh.new()
+var _cone := CylinderMesh.new()
+
+var mat_asphalt: StandardMaterial3D
+var mat_sand: StandardMaterial3D
+var mat_sidewalk: StandardMaterial3D
+var mat_plaza: StandardMaterial3D
+var mat_line: StandardMaterial3D
+var mat_dark: StandardMaterial3D
+var mat_metal: StandardMaterial3D
+var mat_trunk: StandardMaterial3D
+var mat_palm: StandardMaterial3D
+var mat_rock: StandardMaterial3D
+var mat_sandbag: StandardMaterial3D
+var mat_barrier: StandardMaterial3D
+var mat_lamp_glow: StandardMaterial3D
+var mat_mountain: StandardMaterial3D
+var mat_skyline: StandardMaterial3D
+var mat_car_paints: Array[StandardMaterial3D] = []
+var mat_canopy: Array[StandardMaterial3D] = []
 
 func _ready() -> void:
-	seed(20261112)
-	player = get_tree().get_first_node_in_group("player")
+	rng.seed = seed
+	_unit_box.size = Vector3.ONE
+	_unit_cyl.top_radius = 0.5
+	_unit_cyl.bottom_radius = 0.5
+	_unit_cyl.height = 1.0
+	_unit_sphere.radius = 0.5
+	_unit_sphere.height = 1.0
+	_cone.top_radius = 0.0
+	_cone.bottom_radius = 0.5
+	_cone.height = 1.0
 	_setup_materials()
-	_build_environment()
-	_build_ground_and_roads()
-	_build_city_blocks()
-	_build_street_lighting()
-	_build_vegetation()
-        var psx_dressing = load("res://scripts/psx_world_dressing.gd").new()
-        psx_dressing.name = "PSXWorldDressing"
-        add_child(psx_dressing)
-	call_deferred("_spawn_hostiles")
-	_build_weather()
-	print("PHANTOM OPS: world generation complete")
-
-func _process(delta: float) -> void:
-	if not weather_cycle: return
-	weather_timer += delta
-	if weather_timer >= 95.0:
-		weather_timer = 0.0
-		weather_mode = (weather_mode + 1) % 4
-		_apply_weather()
+	_build_city()
 
 func _setup_materials() -> void:
-	sand.albedo_color = Color(0.30,0.34,0.32)
-	sand.roughness = 0.94
-	asphalt.albedo_color = Color(0.075,0.09,0.105)
-	asphalt.roughness = 0.82
-	sidewalk.albedo_color = Color(0.37,0.38,0.36)
-	sidewalk.roughness = 0.9
-	for c in [Color(0.42,0.39,0.34), Color(0.34,0.38,0.39), Color(0.43,0.42,0.37), Color(0.31,0.34,0.34)]:
-		var m := StandardMaterial3D.new()
-		m.albedo_color = c
-		m.roughness = 0.9
-		wall_materials.append(m)
-	window_glass.albedo_color = Color(0.055,0.15,0.20)
-	window_glass.metallic = 0.35
-	window_glass.roughness = 0.2
-	window_frame.albedo_color = Color(0.12,0.14,0.15)
-	door_material.albedo_color = Color(0.19,0.12,0.08)
-	lamp_glow.albedo_color = Color(1.0,0.72,0.38)
-	lamp_glow.emission_enabled = true
-	lamp_glow.emission = Color(1.0,0.56,0.22)
-	lamp_glow.emission_energy_multiplier = 2.0
+	mat_asphalt = ProceduralTextures.asphalt_material()
+	mat_sand = ProceduralTextures.sand_material()
+	mat_sidewalk = ProceduralTextures.sidewalk_material()
+	mat_plaza = ProceduralTextures.plaza_material()
+	mat_line = ProceduralTextures.flat_material(Color(0.85, 0.75, 0.35), 0.8)
+	mat_dark = ProceduralTextures.flat_material(Color(0.16, 0.17, 0.19), 0.85)
+	mat_metal = ProceduralTextures.flat_material(Color(0.35, 0.37, 0.40), 0.55)
+	mat_trunk = ProceduralTextures.flat_material(Color(0.45, 0.33, 0.20), 0.95)
+	mat_palm = ProceduralTextures.flat_material(Color(0.22, 0.45, 0.20), 0.95)
+	mat_rock = ProceduralTextures.flat_material(Color(0.55, 0.50, 0.44), 0.95)
+	mat_sandbag = ProceduralTextures.flat_material(Color(0.62, 0.55, 0.38), 1.0)
+	mat_barrier = ProceduralTextures.flat_material(Color(0.85, 0.45, 0.15), 0.9)
+	mat_lamp_glow = ProceduralTextures.flat_material(Color(1.0, 0.85, 0.55), 0.4)
+	mat_lamp_glow.emission_enabled = true
+	mat_lamp_glow.emission = Color(1.0, 0.80, 0.45)
+	mat_lamp_glow.emission_energy_multiplier = 1.5
+	mat_mountain = ProceduralTextures.flat_material(Color(0.55, 0.42, 0.32), 1.0)
+	mat_skyline = ProceduralTextures.flat_material(Color(0.48, 0.38, 0.30), 1.0)
+	for c in [Color(0.55, 0.12, 0.10), Color(0.15, 0.25, 0.45), Color(0.70, 0.65, 0.55), Color(0.20, 0.35, 0.25)]:
+		mat_car_paints.append(ProceduralTextures.flat_material(c, 0.5))
+	for c in [Color(0.75, 0.30, 0.20), Color(0.20, 0.55, 0.55), Color(0.85, 0.65, 0.25), Color(0.55, 0.30, 0.45)]:
+		mat_canopy.append(ProceduralTextures.flat_material(c, 0.9))
 
-func _box(parent: Node, name: String, size: Vector3, pos: Vector3, mat: Material, collision := false) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh.material = mat
-	var instance := MeshInstance3D.new()
-	instance.name = name
-	instance.mesh = mesh
-	instance.position = pos
-	parent.add_child(instance)
-	if collision and parent is StaticBody3D:
-		var shape := CollisionShape3D.new()
-		var box_shape := BoxShape3D.new()
-		box_shape.size = size
-		shape.shape = box_shape
-		shape.position = pos
-		parent.add_child(shape)
-	return instance
+# ---------------------------------------------------------------- build
 
-func _build_environment() -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.12,0.20,0.29)
-	sky_mat.sky_horizon_color = Color(0.58,0.55,0.47)
-	sky_mat.ground_bottom_color = Color(0.07,0.08,0.09)
-	sky_mat.ground_horizon_color = Color(0.28,0.29,0.27)
-	sky.sky_material = sky_mat
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.43,0.48,0.54)
-	env.ambient_light_energy = 0.72
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.43,0.47,0.48)
-	env.fog_density = 0.0018
-	world_environment = WorldEnvironment.new()
-	world_environment.environment = env
-	add_child(world_environment)
-	sun = DirectionalLight3D.new()
-	sun.name = "SunMoon"
-	sun.rotation_degrees = Vector3(-42.0, -28.0, 0.0)
+func _build_city() -> void:
+	_build_ground()
+	_build_roads()
+	_build_blocks_and_buildings()
+	_build_plaza_and_market()
+	_build_props()
+	_build_checkpoint()
+	_build_landmark_and_horizon()
+	_build_sun()
+	_collect_spawn_points()
+
+func _build_ground() -> void:
+	var ground := StaticBody3D.new()
+	ground.name = "Ground"
+	var mi := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(city_half * 2.0, city_half * 2.0)
+	plane.material = mat_sand
+	mi.mesh = plane
+	ground.add_child(mi)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(city_half * 2.0, 0.2, city_half * 2.0)
+	col.shape = shape
+	col.position.y = -0.1
+	ground.add_child(col)
+	add_child(ground)
+
+func _flat_box(parent: Node, box_name: String, pos: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = box_name
+	mi.mesh = _unit_box
+	mi.scale = size
+	mi.position = pos
+	if mat != null:
+		mi.material_override = mat
+	parent.add_child(mi)
+	return mi
+
+func _build_roads() -> void:
+	var roads := Node3D.new()
+	roads.name = "Roads"
+	add_child(roads)
+	for x in ROAD_POS:
+		_flat_box(roads, "RoadX_%d" % int(x), Vector3(x, 0.04, 0), Vector3(road_width, 0.08, city_half * 2.0), mat_asphalt)
+		_flat_box(roads, "RoadZ_%d" % int(x), Vector3(0, 0.04, x), Vector3(city_half * 2.0, 0.08, road_width), mat_asphalt)
+		# Centre line, split around the plaza so it does not cross the square.
+		_flat_box(roads, "LineXa_%d" % int(x), Vector3(x, 0.09, -95), Vector3(0.4, 0.02, 130), mat_line)
+		_flat_box(roads, "LineXb_%d" % int(x), Vector3(x, 0.09, 95), Vector3(0.4, 0.02, 130), mat_line)
+		_flat_box(roads, "LineZa_%d" % int(x), Vector3(-95, 0.09, x), Vector3(130, 0.02, 0.4), mat_line)
+		_flat_box(roads, "LineZb_%d" % int(x), Vector3(95, 0.09, x), Vector3(130, 0.02, 0.4), mat_line)
+
+func _block_centres() -> Array[Vector2]:
+	var centres: Array[Vector2] = []
+	var edges: Array[float] = [-150.0, -100.0, -50.0, 0.0, 50.0, 100.0, 150.0]
+	for i in range(edges.size() - 1):
+		for j in range(edges.size() - 1):
+			centres.append(Vector2((edges[i] + edges[i + 1]) * 0.5, (edges[j] + edges[j + 1]) * 0.5))
+	return centres
+
+func _build_blocks_and_buildings() -> void:
+	var blocks := Node3D.new()
+	blocks.name = "Blocks"
+	add_child(blocks)
+	var buildings := Node3D.new()
+	buildings.name = "Buildings"
+	add_child(buildings)
+	var count := 0
+	for centre in _block_centres():
+		# Pavement slab for the whole block.
+		_flat_box(blocks, "Slab", Vector3(centre.x, 0.06, centre.y), Vector3(44, 0.12, 44), mat_sidewalk)
+		var district := "central"
+		if centre.x < -50.0:
+			district = "medina"
+		elif centre.x > 50.0:
+			district = "modern"
+		var per_block := 2
+		if district == "medina":
+			per_block = 3
+		elif district == "modern":
+			per_block = 2
+		for k in range(per_block):
+			if _try_building(buildings, centre, district, k):
+				count += 1
+	print("Phantom Ops: city built with %d buildings" % count)
+
+func _try_building(parent: Node, block_centre: Vector2, district: String, slot: int) -> bool:
+	var w := 10.0
+	var h := 8.0
+	var d := 10.0
+	if district == "medina":
+		w = rng.randf_range(6.0, 9.5)
+		h = rng.randf_range(3.5, 6.5)
+		d = rng.randf_range(6.0, 9.5)
+	elif district == "modern":
+		w = rng.randf_range(12.0, 18.0)
+		h = rng.randf_range(10.0, 22.0)
+		d = rng.randf_range(12.0, 18.0)
+	else:
+		w = rng.randf_range(8.0, 13.0)
+		h = rng.randf_range(5.0, 12.0)
+		d = rng.randf_range(8.0, 13.0)
+	# Grid-ish slots inside the block so buildings never overlap each other.
+	var off := Vector2.ZERO
+	if slot == 0:
+		off = Vector2(-8, -8)
+	elif slot == 1:
+		off = Vector2(8, -8)
+	elif slot == 2:
+		off = Vector2(-8, 8)
+	else:
+		off = Vector2(8, 8)
+	off += Vector2(rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0))
+	var pos := Vector3(block_centre.x + off.x, 0, block_centre.y + off.y)
+	# Keep the plaza / spawn clear, and stay inside the block.
+	if Vector2(pos.x, pos.z).length() < 30.0:
+		return false
+	if absf(pos.x) > 142.0 or absf(pos.z) > 142.0:
+		return false
+	var rect := Rect2(pos.x - w * 0.5, pos.z - d * 0.5, w, d)
+	for other in occupied:
+		if rect.intersects(other):
+			return false
+	occupied.append(rect)
+	_create_building(parent, pos, Vector3(w, h, d))
+	return true
+
+func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
+	var idx := parent.get_child_count()
+	var body := StaticBody3D.new()
+	body.name = "Building_%02d" % idx
+	body.position = pos
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	box.material = ProceduralTextures.facade_material(rng.randi_range(0, 3))
+	mi.mesh = box
+	mi.position.y = size.y * 0.5
+	body.add_child(mi)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	col.position.y = size.y * 0.5
+	body.add_child(col)
+	# Parapet / roof slab.
+	_flat_box(body, "RoofSlab", Vector3(0, size.y + 0.15, 0), Vector3(size.x + 0.6, 0.3, size.z + 0.6), ProceduralTextures.flat_material(Color(0.55, 0.48, 0.40), 0.95))
+	# Rooftop clutter: AC unit or water tank on about half the roofs.
+	if rng.randf() < 0.55:
+		var rw := rng.randf_range(0.8, 1.6)
+		var rh := rng.randf_range(0.6, 1.4)
+		var rd := rng.randf_range(0.8, 1.6)
+		var roof_mat := mat_metal if rng.randf() < 0.5 else ProceduralTextures.flat_material(Color(0.30, 0.45, 0.55), 0.8)
+		_flat_box(body, "RoofBox", Vector3(rng.randf_range(-size.x * 0.25, size.x * 0.25), size.y + 0.3 + rh * 0.5, rng.randf_range(-size.z * 0.25, size.z * 0.25)), Vector3(rw, rh, rd), roof_mat)
+	# Awning over the street-facing door on low buildings.
+	if size.y < 9.0 and rng.randf() < 0.6:
+		_flat_box(body, "Awning", Vector3(0, 2.6, size.z * 0.5 + 0.7), Vector3(3.2, 0.15, 1.4), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
+	parent.add_child(body)
+
+func _build_plaza_and_market() -> void:
+	var plaza := Node3D.new()
+	plaza.name = "Plaza"
+	add_child(plaza)
+	_flat_box(plaza, "PlazaFloor", Vector3(0, 0.06, 0), Vector3(PLAZA_HALF * 2.0, 0.12, PLAZA_HALF * 2.0), mat_plaza)
+	# Market stalls in a ring around the square, spawn (0, 10) kept clear.
+	for i in range(10):
+		var ang := TAU * float(i) / 10.0 + 0.3
+		var r := 18.5
+		var pos := Vector3(cos(ang) * r, 0, sin(ang) * r)
+		if pos.distance_to(Vector3(0, 0, 10)) < 6.0:
+			continue
+		_stall(plaza, pos, ang, mat_canopy[i % mat_canopy.size()])
+	# Benches facing the square.
+	for i in range(8):
+		var ang := TAU * float(i) / 8.0
+		var pos := Vector3(cos(ang) * 12.0, 0, sin(ang) * 12.0)
+		if pos.distance_to(Vector3(0, 0, 10)) < 5.0:
+			continue
+		var bench := StaticBody3D.new()
+		bench.name = "Bench_%d" % i
+		bench.position = pos
+		bench.rotation.y = -ang + PI * 0.5
+		_flat_box(bench, "Seat", Vector3(0, 0.45, 0), Vector3(2.2, 0.12, 0.6), mat_trunk)
+		_flat_box(bench, "Back", Vector3(0, 0.85, -0.28), Vector3(2.2, 0.6, 0.1), mat_trunk)
+		var bcol := CollisionShape3D.new()
+		var bshape := BoxShape3D.new()
+		bshape.size = Vector3(2.2, 1.0, 0.7)
+		bcol.shape = bshape
+		bcol.position.y = 0.5
+		bench.add_child(bcol)
+		plaza.add_child(bench)
+
+func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> void:
+	var stall := StaticBody3D.new()
+	stall.name = "Stall"
+	stall.position = pos
+	stall.rotation.y = -ang
+	_flat_box(stall, "Counter", Vector3(0, 0.55, 0), Vector3(2.4, 1.1, 1.3), mat_trunk)
+	_flat_box(stall, "Goods", Vector3(0, 1.2, 0), Vector3(2.0, 0.25, 1.0), ProceduralTextures.flat_material(Color(0.85, 0.60, 0.25), 0.9))
+	_flat_box(stall, "Canopy", Vector3(0, 2.3, 0), Vector3(2.8, 0.12, 1.8), canopy_mat)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(2.4, 2.3, 1.3)
+	col.shape = shape
+	col.position.y = 1.15
+	stall.add_child(col)
+	parent.add_child(stall)
+
+# ---------------------------------------------------------------- props
+
+func _prop_box(parent: Node, prop_name: String, pos: Vector3, size: Vector3, mat: Material, collide: bool, rot_y: float = 0.0) -> Node3D:
+	var node: Node3D
+	if collide:
+		var body := StaticBody3D.new()
+		node = body
+		var col := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = size
+		col.shape = shape
+		col.position.y = size.y * 0.5
+		body.add_child(col)
+	else:
+		node = Node3D.new()
+	node.name = prop_name
+	node.position = pos
+	node.rotation.y = rot_y
+	_flat_box(node, "Mesh", Vector3(0, size.y * 0.5, 0), size, mat)
+	parent.add_child(node)
+	return node
+
+func _palm(parent: Node, pos: Vector3) -> void:
+	var palm := StaticBody3D.new()
+	palm.name = "Palm"
+	palm.position = pos
+	var trunk := MeshInstance3D.new()
+	trunk.mesh = _unit_cyl
+	trunk.scale = Vector3(0.36, 4.2, 0.36)
+	trunk.position.y = 2.1
+	trunk.material_override = mat_trunk
+	palm.add_child(trunk)
+	var canopy := MeshInstance3D.new()
+	canopy.mesh = _unit_sphere
+	canopy.scale = Vector3(4.4, 1.4, 4.4)
+	canopy.position.y = 4.5
+	canopy.material_override = mat_palm
+	palm.add_child(canopy)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.3
+	shape.height = 4.2
+	col.shape = shape
+	col.position.y = 2.1
+	palm.add_child(col)
+	parent.add_child(palm)
+
+func _lamp(parent: Node, pos: Vector3) -> void:
+	var lamp := StaticBody3D.new()
+	lamp.name = "Lamp"
+	lamp.position = pos
+	var pole := MeshInstance3D.new()
+	pole.mesh = _unit_cyl
+	pole.scale = Vector3(0.16, 5.0, 0.16)
+	pole.position.y = 2.5
+	pole.material_override = mat_dark
+	lamp.add_child(pole)
+	_flat_box(lamp, "Arm", Vector3(0.6, 4.9, 0), Vector3(1.3, 0.12, 0.12), mat_dark)
+	_flat_box(lamp, "Head", Vector3(1.2, 4.8, 0), Vector3(0.5, 0.18, 0.3), mat_lamp_glow)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.2
+	shape.height = 5.0
+	col.shape = shape
+	col.position.y = 2.5
+	lamp.add_child(col)
+	parent.add_child(lamp)
+
+func _car(parent: Node, pos: Vector3, rot_y: float, paint: Material) -> void:
+	var car := StaticBody3D.new()
+	car.name = "Car"
+	car.position = pos
+	car.rotation.y = rot_y
+	_flat_box(car, "Body", Vector3(0, 0.65, 0), Vector3(1.9, 0.7, 4.4), paint)
+	_flat_box(car, "Cabin", Vector3(0, 1.25, -0.2), Vector3(1.7, 0.6, 2.2), mat_dark)
+	for wx in [-0.85, 0.85]:
+		for wz in [-1.4, 1.4]:
+			var wheel := MeshInstance3D.new()
+			wheel.mesh = _unit_cyl
+			wheel.scale = Vector3(0.65, 0.25, 0.65)
+			wheel.rotation_degrees = Vector3(0, 0, 90)
+			wheel.position = Vector3(wx, 0.35, wz)
+			wheel.material_override = mat_dark
+			car.add_child(wheel)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(1.9, 1.6, 4.4)
+	col.shape = shape
+	col.position.y = 0.8
+	car.add_child(col)
+	parent.add_child(car)
+
+func _build_props() -> void:
+	var props := Node3D.new()
+	props.name = "Props"
+	add_child(props)
+	# Lamps + palms along the main roads, alternating sides.
+	for i in range(12):
+		var road_x: float = ROAD_POS[i % ROAD_POS.size()]
+		var z := -130.0 + float(i) * 24.0 + rng.randf_range(-4.0, 4.0)
+		_lamp(props, Vector3(road_x + 6.8, 0, z))
+		_palm(props, Vector3(road_x - 7.5, 0, z + 12.0))
+	for i in range(6):
+		var road_z: float = ROAD_POS[i % ROAD_POS.size()]
+		var x := -110.0 + float(i) * 44.0
+		_lamp(props, Vector3(x, 0, road_z + 6.8))
+	# Parked / wrecked cars along streets.
+	var car_spots: Array[Vector3] = [
+		Vector3(-57.5, 0, -30), Vector3(-42.5, 0, 40), Vector3(57.5, 0, -70),
+		Vector3(42.5, 0, 90), Vector3(-7.5, 0, -60), Vector3(7.5, 0, 70),
+		Vector3(-107.5, 0, 20), Vector3(107.5, 0, -20),
+	]
+	for i in range(car_spots.size()):
+		_car(props, car_spots[i], rng.randf_range(-0.15, 0.15) + (PI * 0.5 if i % 2 == 0 else 0.0), mat_car_paints[i % mat_car_paints.size()])
+	# Crates, sandbags and rocks scattered near blocks (never on roads / spawn).
+	for i in range(20):
+		var p := _random_off_road_point()
+		_prop_box(props, "Crate", p, Vector3(rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.3)), mat_trunk, true, rng.randf() * TAU)
+	for i in range(14):
+		var p := _random_off_road_point()
+		var rock := MeshInstance3D.new()
+		rock.name = "Rock"
+		rock.mesh = _unit_sphere
+		rock.scale = Vector3(rng.randf_range(0.8, 2.0), rng.randf_range(0.4, 0.8), rng.randf_range(0.8, 2.0))
+		rock.position = p + Vector3(0, 0.2, 0)
+		rock.material_override = mat_rock
+		props.add_child(rock)
+
+func _random_off_road_point() -> Vector3:
+	for attempt in range(20):
+		var p := Vector3(rng.randf_range(-140, 140), 0, rng.randf_range(-140, 140))
+		if Vector2(p.x, p.z).length() < 26.0:
+			continue
+		if _on_road(p.x, p.z):
+			continue
+		var r := Rect2(p.x - 1, p.z - 1, 2, 2)
+		var hit := false
+		for other in occupied:
+			if r.intersects(other):
+				hit = true
+				break
+		if not hit:
+			return p
+	return Vector3(60, 0, 60)
+
+func _on_road(x: float, z: float) -> bool:
+	for r in ROAD_POS:
+		if absf(x - r) < road_width * 0.5 + 1.0:
+			return true
+		if absf(z - r) < road_width * 0.5 + 1.0:
+			return true
+	return false
+
+func _build_checkpoint() -> void:
+	var cp := Node3D.new()
+	cp.name = "Checkpoint"
+	add_child(cp)
+	# Military edge across the north road (x = 0, z = -110).
+	_prop_box(cp, "Booth", Vector3(9, 0, -110), Vector3(3, 3, 3), mat_dark, true)
+	_flat_box(cp, "BoothRoof", Vector3(9, 3.1, -110), Vector3(3.6, 0.25, 3.6), mat_barrier)
+	for i in range(6):
+		_prop_box(cp, "Sandbag", Vector3(-12 + float(i) * 2.2, 0, -108), Vector3(2.0, 0.9, 1.0), mat_sandbag, true)
+		_prop_box(cp, "Sandbag2", Vector3(-12 + float(i) * 2.2, 0, -112), Vector3(2.0, 0.9, 1.0), mat_sandbag, true)
+	for i in range(4):
+		_prop_box(cp, "Barrier", Vector3(-4 + float(i) * 2.6, 0, -110), Vector3(2.2, 1.0, 0.4), mat_barrier, true)
+	# A few sandbag nests elsewhere on the medina side.
+	for i in range(4):
+		_prop_box(cp, "SandbagNest", Vector3(-120 + float(i) * 3.0, 0, -40), Vector3(2.0, 0.9, 1.0), mat_sandbag, true)
+
+func _build_landmark_and_horizon() -> void:
+	# Minaret / landmark tower on the plaza's north-east corner.
+	var minaret := Node3D.new()
+	minaret.name = "Minaret"
+	minaret.position = Vector3(26, 0, -26)
+	add_child(minaret)
+	var shaft := MeshInstance3D.new()
+	shaft.mesh = _unit_cyl
+	shaft.scale = Vector3(2.4, 24.0, 2.4)
+	shaft.position.y = 12.0
+	shaft.material_override = ProceduralTextures.flat_material(Color(0.92, 0.88, 0.78), 0.95)
+	minaret.add_child(shaft)
+	var balcony := MeshInstance3D.new()
+	balcony.mesh = _unit_cyl
+	balcony.scale = Vector3(3.6, 0.8, 3.6)
+	balcony.position.y = 19.0
+	balcony.material_override = mat_dark
+	minaret.add_child(balcony)
+	var cap := MeshInstance3D.new()
+	cap.mesh = _cone
+	cap.scale = Vector3(3.2, 4.0, 3.2)
+	cap.position.y = 26.0
+	cap.material_override = ProceduralTextures.flat_material(Color(0.25, 0.45, 0.35), 0.8)
+	minaret.add_child(cap)
+	# Distant skyline silhouette ring — the city reads from afar.
+	var skyline := Node3D.new()
+	skyline.name = "Skyline"
+	add_child(skyline)
+	for i in range(18):
+		var ang := TAU * float(i) / 18.0 + rng.randf_range(-0.08, 0.08)
+		var r := 185.0
+		var w := rng.randf_range(10.0, 22.0)
+		var h := rng.randf_range(8.0, 20.0)
+		_flat_box(skyline, "Distant_%d" % i, Vector3(cos(ang) * r, h * 0.5, sin(ang) * r), Vector3(w, h, w), mat_skyline)
+	# Mountain ring (Jebel Chambi silhouette) beyond the city.
+	var mountains := Node3D.new()
+	mountains.name = "Mountains"
+	add_child(mountains)
+	for i in range(12):
+		var ang := TAU * float(i) / 12.0 + rng.randf_range(-0.1, 0.1)
+		var r := rng.randf_range(260.0, 310.0)
+		var h := rng.randf_range(45.0, 95.0)
+		var base_r := rng.randf_range(45.0, 75.0)
+		var m := MeshInstance3D.new()
+		m.mesh = _cone
+		m.scale = Vector3(base_r * 2.0, h, base_r * 2.0)
+		m.position = Vector3(cos(ang) * r, h * 0.5 - 4.0, sin(ang) * r)
+		m.material_override = mat_mountain
+		mountains.add_child(m)
+
+func _build_sun() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.rotation_degrees = Vector3(-52, 38, 0)
+	sun.light_color = Color(1.0, 0.86, 0.66)
 	sun.light_energy = 1.15
 	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 220.0
 	add_child(sun)
 
-func _build_ground_and_roads() -> void:
-	var ground := StaticBody3D.new()
-	ground.name = "GroundCollision"
-	_box(ground, "Terrain", Vector3(city_size.x*2.0,0.2,city_size.y*2.0), Vector3(0,-0.1,0), sand, true)
-	add_child(ground)
-	# Main asphalt cross and secondary streets.
-	_box(self, "MainRoadNorthSouth", Vector3(15,0.08,city_size.y*2.0), Vector3(0,0.015,0), asphalt)
-	_box(self, "MainRoadEastWest", Vector3(city_size.x*2.0,0.08,15), Vector3(0,0.016,0), asphalt)
-	for x in [-90.0,-60.0,-30.0,30.0,60.0,90.0]:
-		_box(self, "RoadX_%d" % int(x), Vector3(9,0.06,city_size.y*2.0), Vector3(x,0.02,0), asphalt)
-	for z in [-90.0,-60.0,-30.0,30.0,60.0,90.0]:
-		_box(self, "RoadZ_%d" % int(z), Vector3(city_size.x*2.0,0.06,9), Vector3(0,0.02,z), asphalt)
-	# Sidewalk ribbons, broken white lane markers and crossings.
-	for z in [-8.6,8.6]:
-		_box(self, "MainSidewalkZ_%d" % int(z), Vector3(city_size.x*2.0,0.12,2.0), Vector3(0,0.07,z), sidewalk)
-	for x in [-8.6,8.6]:
-		_box(self, "MainSidewalkX_%d" % int(x), Vector3(2.0,0.12,city_size.y*2.0), Vector3(x,0.07,0), sidewalk)
-	var marking := StandardMaterial3D.new()
-	marking.albedo_color = Color(0.74,0.76,0.70)
-	for i in range(-8,9):
-		_box(self, "LaneMark_%d" % i, Vector3(0.22,0.025,3.2), Vector3(0,0.07,i*9.0), marking)
-		_box(self, "CrossMark_%d" % i, Vector3(3.2,0.025,0.22), Vector3(i*9.0,0.071,0), marking)
-
-func _build_city_blocks() -> void:
-	var plots := [Vector2(-45,-45),Vector2(45,-45),Vector2(-45,45),Vector2(45,45),Vector2(-80,-45),Vector2(80,-45),Vector2(-80,45),Vector2(80,45),Vector2(-45,-80),Vector2(45,-80),Vector2(-45,80),Vector2(45,80),Vector2(-105,-45),Vector2(105,-45),Vector2(-105,45),Vector2(105,45),Vector2(-45,-105),Vector2(45,-105),Vector2(-45,105),Vector2(45,105),Vector2(-105,-105),Vector2(105,-105),Vector2(-105,105),Vector2(105,105)]
-	for i in range(building_count):
-		var p: Vector2 = plots[i % plots.size()]
-		var offset := Vector2(randf_range(-8,8),randf_range(-8,8))
-		_create_building(i, p + offset)
-
-func _create_building(index: int, p: Vector2) -> void:
-	var body := StaticBody3D.new()
-	body.name = "Building_%02d" % index
-	var sx := randf_range(10.0,17.0)
-	var sy := randf_range(7.0,14.0)
-	var sz := randf_range(10.0,17.0)
-	var wall: Material = wall_materials[index % wall_materials.size()]
-	_box(body,"Facade",Vector3(sx,sy,sz),Vector3(0,sy*0.5,0),wall,true)
-	# Roof parapet and front entrance.
-	_box(body,"RoofLip",Vector3(sx+0.5,0.45,sz+0.5),Vector3(0,sy+0.2,0),wall)
-	_box(body,"EntranceDoor",Vector3(1.7,2.8,0.16),Vector3(0,1.4,-sz*0.501),door_material)
-	_box(body,"DoorTop",Vector3(2.2,0.22,0.28),Vector3(0,2.9,-sz*0.51),window_frame)
-	# Two floors of visible framed windows on the front and rear.
-	for floor in range(2):
-		for side in [-1.0,1.0]:
-			var wx := side*sx*0.27
-			var wy := 3.0 + floor*3.6
-			_box(body,"WindowFrame",Vector3(1.65,1.65,0.18),Vector3(wx,wy,-sz*0.505),window_frame)
-			_box(body,"WindowGlass",Vector3(1.28,1.28,0.08),Vector3(wx,wy,-sz*0.515),window_glass)
-			_box(body,"WindowSill",Vector3(1.9,0.16,0.28),Vector3(wx,wy-0.88,-sz*0.52),window_frame)
-	# A few side windows create a lived-in silhouette.
-	for side in [-1.0,1.0]:
-		for floor in range(2):
-			_box(body,"SideWindow",Vector3(0.12,1.3,1.5),Vector3(side*sx*0.505,3.1+floor*3.6,0),window_glass)
-	body.position = Vector3(p.x,0,p.y)
-	add_child(body)
-
-func _build_street_lighting() -> void:
-	for i in range(-4,5):
-		for side in [-1.0,1.0]:
-			var pole := Node3D.new()
-			pole.name = "StreetLamp"
-			pole.position = Vector3(side*11.0,0,i*28.0)
-			add_child(pole)
-			_box(pole,"Pole",Vector3(0.18,5.4,0.18),Vector3(0,2.7,0),window_frame)
-			_box(pole,"Arm",Vector3(1.4,0.12,0.12),Vector3(-0.55,5.25,0),window_frame)
-			_box(pole,"LampHead",Vector3(0.55,0.18,0.42),Vector3(-1.1,5.15,0),lamp_glow)
-			var light := OmniLight3D.new()
-			light.position = Vector3(-1.1,4.95,0)
-			light.light_color = Color(1.0,0.70,0.42)
-			light.light_energy = 1.15
-			light.omni_range = 13.0
-			pole.add_child(light)
-
-func _build_vegetation() -> void:
-	var trunk_mat := StandardMaterial3D.new()
-	trunk_mat.albedo_color = Color(0.22,0.16,0.11)
-	var leaf_mat := StandardMaterial3D.new()
-	leaf_mat.albedo_color = Color(0.12,0.23,0.17)
-	for i in range(18):
-		var x := randf_range(-100,100)
-		var z := randf_range(-100,100)
-		if absf(x) < 18 or absf(z) < 18: continue
-		var tree := Node3D.new()
-		tree.name = "StreetTree"
-		tree.position = Vector3(x,0,z)
-		add_child(tree)
-		_box(tree,"Trunk",Vector3(0.55,2.6,0.55),Vector3(0,1.3,0),trunk_mat)
-		var crown := MeshInstance3D.new()
-		var mesh := SphereMesh.new()
-		mesh.radius = 1.7
-		mesh.height = 3.4
-		mesh.material = leaf_mat
-		crown.mesh = mesh
-		crown.position.y = 3.2
-		tree.add_child(crown)
-
-func _spawn_hostiles() -> void:
-	# Player._ready runs after this generator's _ready; resolve it now, not earlier.
-	player = get_tree().get_first_node_in_group("player")
-	if player == null:
-		push_warning("PHANTOM OPS: player node missing; infected spawn skipped")
-		return
-	for i in range(zombie_count):
-		var enemy := CharacterBody3D.new()
-		enemy.name = "Infected_%02d" % i
-		enemy.set_script(load("res://scripts/enemy_ai.gd"))
-		enemy.set("target", player)
-		enemy.position = Vector3(randf_range(-95,95),1.0,randf_range(-95,95))
-		if Vector2(enemy.position.x,enemy.position.z).length() < 28.0:
-			enemy.position.x += 48.0
-		var capsule := CapsuleShape3D.new()
-		capsule.radius = 0.48
-		capsule.height = 1.9
-		var collision := CollisionShape3D.new()
-		collision.shape = capsule
-		enemy.add_child(collision)
-		var visual := MeshInstance3D.new()
-		var mesh := CapsuleMesh.new()
-		mesh.radius = 0.48
-		mesh.height = 1.9
-		var skin := StandardMaterial3D.new()
-		skin.albedo_color = Color(0.24,0.34,0.25)
-		mesh.material = skin
-		visual.mesh = mesh
-		visual.position.y = 0.0
-		enemy.add_child(visual)
-		var eyes := MeshInstance3D.new()
-		var eye_mesh := BoxMesh.new()
-		eye_mesh.size = Vector3(0.42,0.10,0.10)
-		var eye_mat := StandardMaterial3D.new()
-		eye_mat.albedo_color = Color(0.8,0.08,0.035)
-		eye_mat.emission_enabled = true
-		eye_mat.emission = Color(0.8,0.04,0.01)
-		eyes.mesh = eye_mesh
-		eyes.material_override = eye_mat
-		eyes.position = Vector3(0,0.42,-0.43)
-		enemy.add_child(eyes)
-		add_child(enemy)
-
-func _build_weather() -> void:
-	rain_particles = GPUParticles3D.new()
-	rain_particles.name = "Rain"
-	rain_particles.amount = 900
-	rain_particles.lifetime = 1.8
-	rain_particles.emitting = false
-	rain_particles.position = Vector3(0,14,0)
-	var process := ParticleProcessMaterial.new()
-	process.direction = Vector3(0.05,-1.0,0.02)
-	process.initial_velocity_min = 20.0
-	process.initial_velocity_max = 28.0
-	process.gravity = Vector3(0,-9.8,0)
-	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	process.emission_box_extents = Vector3(90,8,90)
-	rain_particles.process_material = process
-	var draw := BoxMesh.new()
-	draw.size = Vector3(0.025,0.7,0.025)
-	var rain_mat := StandardMaterial3D.new()
-	rain_mat.albedo_color = Color(0.55,0.68,0.78,0.55)
-	rain_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	draw.material = rain_mat
-	rain_particles.draw_pass_1 = draw
-	add_child(rain_particles)
-	_apply_weather()
-
-func _apply_weather() -> void:
-	if world_environment == null: return
-	var env := world_environment.environment
-	match weather_mode:
-		0: # clear
-			rain_particles.emitting = false
-			env.fog_density = 0.0018
-			env.ambient_light_energy = 0.72
-			sun.light_energy = 1.15
-		1: # overcast
-			rain_particles.emitting = false
-			env.fog_density = 0.0032
-			env.ambient_light_energy = 0.62
-			sun.light_energy = 0.75
-		2: # rain
-			rain_particles.emitting = true
-			env.fog_density = 0.005
-			env.ambient_light_energy = 0.55
-			sun.light_energy = 0.55
-		3: # night storm
-			rain_particles.emitting = true
-			env.fog_density = 0.007
-			env.ambient_light_energy = 0.38
-			sun.light_energy = 0.18
+func _collect_spawn_points() -> void:
+	# Street / plaza positions away from the player spawn (0, 10).
+	var candidates: Array[Vector3] = []
+	for x in ROAD_POS:
+		for z in [-120.0, -80.0, -40.0, 40.0, 80.0, 120.0]:
+			candidates.append(Vector3(x, 0, z))
+			candidates.append(Vector3(z, 0, x))
+	candidates.append(Vector3(18, 0, -18))
+	candidates.append(Vector3(-18, 0, 18))
+	candidates.append(Vector3(20, 0, 20))
+	for c in candidates:
+		if Vector2(c.x, c.z).distance_to(Vector2(0, 10)) > 25.0:
+			spawn_points.append(c)
+	spawn_points.shuffle()
