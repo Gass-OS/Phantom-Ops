@@ -11,6 +11,10 @@ signal player_died
 @export var fire_cooldown := 0.12
 var current_health := 100.0
 var is_dead := false
+# v0.6: true while driving the police car (set by police_car.gd
+# enter/exit via set()). While driving, on-foot input is ignored —
+# the traffic manager forwards the joystick to the car instead.
+var is_driving := false
 var gravity := 9.8
 var mobile_move := Vector2.ZERO
 var mobile_sprinting := false
@@ -248,17 +252,17 @@ func _check_citizen_greeting() -> void:
 func _on_mobile_move(v: Vector2) -> void:
 	mobile_move = v
 func _on_mobile_look(v: Vector2) -> void:
-	if is_paused or is_dead:
+	if is_paused or is_dead or is_driving:
 		return
 	rotate_y(-v.x * look_sensitivity)
 	camera.rotation.x = clampf(camera.rotation.x - v.y * look_sensitivity, deg_to_rad(-80), deg_to_rad(80))
 func _on_mobile_jump() -> void:
-	if is_paused or is_dead:
+	if is_paused or is_dead or is_driving:
 		return
 	if is_on_floor():
 		velocity.y = jump_velocity
 func _on_mobile_fire() -> void:
-	if is_paused or is_dead or reloading:
+	if is_paused or is_dead or is_driving or reloading:
 		return
 	if _cooldown_timer > 0.0:
 		return

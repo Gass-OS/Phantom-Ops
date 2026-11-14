@@ -191,8 +191,48 @@ Local APK (needs Android SDK 33 + export templates + Java 17):
 godot --headless --path project --export-debug "Android" build/PhantomOps.apk
 ```
 
-Package: `com.phantomops.kasserine`, version `0.4.0` (code 5), arm64-v8a,
+Package: `com.phantomops.kasserine`, version `0.6.0` (code 7), arm64-v8a,
 immersive mode. App icon: `icon.png` (512×512); Godot boot splash off.
+
+## v0.5 — death screen fix, GTA IV dusk graphics
+
+YOU DIED overlay (score/kills/wave, RETRY + MAIN MENU), spawner stops,
+enemies idle when the player is dead. Gritty desaturated dusk palette,
+grime/stains, 3D recessed windows (~22% lit), cornices, drain pipes,
+rooftop tanks/antennas, more balconies, shadow mobile 2048, low warm sun,
+6 lamp OmniLights, 11 clouds, 60 dust motes, detailed cars/enemies/rifle.
+City 73 buildings.
+
+## v0.6 — Kasserine Police (massive upgrade)
+
+- **Languages:** FR / EN / العربية switch in the menu (74 keys × 3
+  languages, Noto Naskh Arabic font, persisted). HUD, pause menu, death
+  screen and mission text all translated.
+- **Police missions:** the player is a Kasserine police officer.
+  RESPOND (stop a robbery), HELP (aid a poor citizen), CHASE (catch a
+  fleeing criminal), PATROL (3 checkpoints) — chained, repeatable,
+  rewards in dinars + XP, objective beacon + HUD panel.
+- **Citizens:** rebuilt skeleton (two-segment arms/legs, hands, feet,
+  varied heights/builds), walk/idle/chat/suspicious/beg/flee states,
+  speech bubbles, conversations in pairs, funny lines, ~15% criminals
+  in disguise, ~20% poor citizens asking for help.
+- **Interaction + money:** dinars in the HUD. HELP / GIVE (10 DT, +score)
+  / CHECK prompts near citizens. Civilians stay non-targetable by gunfire.
+- **Cars:** 10 traffic cars on road loops with procedural engine sounds.
+  Drivable police car (white/blue, POLICE markings, red/blue light bar,
+  siren, ENTER/EXIT, arcade driving with the joystick).
+- **Adhan:** a REAL human adhan ("Beautiful adhan", CC0 public domain,
+  Wikimedia Commons, 2 min 34 s) plays in full from the mosque at dusk,
+  with an ADHAN ON/OFF toggle in the menu. Never looped, never synthesised.
+- **Day/night + rain:** 4-minute cycle (BG_COLOR only — no Sky/fog, the
+  v0.2 black-screen cause), night lamps + lit windows, occasional rain
+  with thunder + lightning flash, on-screen clock.
+- **Buildings:** real 3D depth — recessed windows, protruding balconies
+  with railings, arched doorways, shop fronts with awnings, steps,
+  rooftop structures. City filled with benches, bins, palms, bus stops,
+  fountain, crates, signs. City 74 buildings.
+- **Hero:** high-detail PBR scan of Aymen (33 MB, 32,768 verts) is now
+  the default hero, LowPoly kept as fallback. Expected APK ~55–65 MB.
 
 ## Project layout
 

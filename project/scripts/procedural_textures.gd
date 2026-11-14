@@ -312,3 +312,28 @@ static func flat_material(col: Color, rough: float = 0.9) -> StandardMaterial3D:
 	m.albedo_color = col
 	m.roughness = rough
 	return m
+
+## v0.6 System 7: striped awning cloth (cream / dusty red), shared by
+## every shop-front awning so awnings read as cloth, not flat colour.
+static func awning_texture() -> ImageTexture:
+	if _cache.has("awning"):
+		return _cache["awning"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 707
+	var img := Image.create(128, 64, false, Image.FORMAT_RGBA8)
+	for x in range(128):
+		var stripe := (x / 16) % 2 == 0
+		var c := Color(0.92, 0.88, 0.78) if stripe else Color(0.62, 0.25, 0.18)
+		for y in range(64):
+			var shade := 0.94 + 0.06 * sin(float(y) * 0.35)
+			img.set_pixel(x, y, Color(c.r * shade, c.g * shade, c.b * shade))
+	_speckle(img, rng, 200, Color(0.85, 0.80, 0.70), Color(0.50, 0.20, 0.14))
+	_fill_rect(img, 0, 58, 128, 6, Color(0.45, 0.38, 0.30))
+	var tex := ImageTexture.create_from_image(img)
+	_cache["awning"] = tex
+	return tex
+
+static func awning_material() -> StandardMaterial3D:
+	if not _cache.has("mat_awning"):
+		_cache["mat_awning"] = _material(awning_texture(), Vector3(1, 1, 1), 0.9)
+	return _cache["mat_awning"]

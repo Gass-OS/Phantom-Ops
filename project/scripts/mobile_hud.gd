@@ -152,28 +152,32 @@ func _draw() -> void:
 	var h := s.y
 	var lay := _layout(w, h)
 	var sc: float = lay["s"]
-	var f := ThemeDB.fallback_font
+	# v0.6: translated UI. Arabic uses the Noto Naskh font (cached
+	# inside LanguageManager); FR/EN use the default theme font.
+	var f: Font = LanguageManager.font_for_current()
+	if f == null:
+		f = ThemeDB.fallback_font
 	var joy_c: Vector2 = lay["joy_c"]
 	var joy_r: float = lay["joy_r"]
 	# Joystick.
 	_button(joy_c, joy_r, Color(0.08, 0.12, 0.16, 0.48))
 	_button(joy_c + move_value * (joy_r - 46.0 * sc), 46.0 * sc, Color(0.75, 0.82, 0.86, 0.8))
-	draw_string(f, Vector2(joy_c.x - 46.0 * sc, joy_c.y + joy_r + 34.0 * sc), "MOVE", HORIZONTAL_ALIGNMENT_CENTER, 92.0 * sc, int(22.0 * sc), Color.WHITE)
+	draw_string(f, Vector2(joy_c.x - 46.0 * sc, joy_c.y + joy_r + 34.0 * sc), LanguageManager.translate("hud_move"), HORIZONTAL_ALIGNMENT_CENTER, 92.0 * sc, int(22.0 * sc), Color.WHITE)
 	# FIRE / JUMP / RUN — same centres/radii as the hit test.
 	var fire_c: Vector2 = lay["fire_c"]
 	var fire_r: float = lay["fire_r"]
 	var fire_col := Color(0.85, 0.16, 0.12, 0.9) if fire_id != -1 else Color(0.72, 0.16, 0.12, 0.78)
 	_button(fire_c, fire_r, fire_col)
-	draw_string(f, Vector2(fire_c.x - fire_r, fire_c.y + 9.0 * sc), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, fire_r * 2.0, int(26.0 * sc), Color.WHITE)
+	draw_string(f, Vector2(fire_c.x - fire_r, fire_c.y + 9.0 * sc), LanguageManager.translate("hud_fire"), HORIZONTAL_ALIGNMENT_CENTER, fire_r * 2.0, int(26.0 * sc), Color.WHITE)
 	var jump_c: Vector2 = lay["jump_c"]
 	var jump_r: float = lay["jump_r"]
 	_button(jump_c, jump_r, Color(0.16, 0.38, 0.58, 0.8))
-	draw_string(f, Vector2(jump_c.x - jump_r, jump_c.y + 7.0 * sc), "JUMP", HORIZONTAL_ALIGNMENT_CENTER, jump_r * 2.0, int(20.0 * sc), Color.WHITE)
+	draw_string(f, Vector2(jump_c.x - jump_r, jump_c.y + 7.0 * sc), LanguageManager.translate("hud_jump"), HORIZONTAL_ALIGNMENT_CENTER, jump_r * 2.0, int(20.0 * sc), Color.WHITE)
 	var run_c: Vector2 = lay["run_c"]
 	var run_r: float = lay["run_r"]
 	var run_col := Color(0.35, 0.45, 0.50, 0.95) if sprinting else Color(0.22, 0.25, 0.29, 0.8)
 	_button(run_c, run_r, run_col)
-	draw_string(f, Vector2(run_c.x - run_r, run_c.y + 7.0 * sc), "RUN", HORIZONTAL_ALIGNMENT_CENTER, run_r * 2.0, int(20.0 * sc), Color.WHITE)
+	draw_string(f, Vector2(run_c.x - run_r, run_c.y + 7.0 * sc), LanguageManager.translate("hud_run"), HORIZONTAL_ALIGNMENT_CENTER, run_r * 2.0, int(20.0 * sc), Color.WHITE)
 	# Pause.
 	var pause_c: Vector2 = lay["pause_c"]
 	var pause_r: float = lay["pause_r"]
@@ -186,17 +190,17 @@ func _draw() -> void:
 	draw_rect(Rect2(18, 72, 260, 24), Color(0.02, 0.03, 0.04, 0.6), true)
 	var hp_col := Color(0.25, 0.75, 0.30) if hp_ratio > 0.5 else (Color(0.9, 0.7, 0.2) if hp_ratio > 0.25 else Color(0.85, 0.2, 0.15))
 	draw_rect(Rect2(20, 74, 256 * hp_ratio, 20), hp_col, true)
-	draw_string(f, Vector2(26, 92), "HP %d" % int(health), HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * sc), Color.WHITE)
+	draw_string(f, Vector2(26, 92), "%s %d" % [LanguageManager.translate("hud_hp"), int(health)], HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * sc), Color.WHITE)
 	# Score / kills / wave, top centre.
-	var status := "SCORE %d    KILLS %d    WAVE %d" % [score, kills, wave]
+	var status := "%s %d    %s %d    %s %d" % [LanguageManager.translate("hud_score"), score, LanguageManager.translate("hud_kills"), kills, LanguageManager.translate("hud_wave"), wave]
 	draw_rect(Rect2(w / 2 - 230, 18, 460, 42), Color(0.02, 0.03, 0.04, 0.55), true)
 	draw_string(f, Vector2(w / 2 - 215, 47), status, HORIZONTAL_ALIGNMENT_LEFT, 430, int(20.0 * sc), Color.WHITE)
 	_draw_compass(f, w)
 	# Ammo, above FIRE; hold-to-fire hint under it.
-	var ammo_text := "RELOADING..." if reloading else "AMMO  %d / %d" % [ammo, mag_size]
+	var ammo_text := LanguageManager.translate("hud_reloading") if reloading else "%s  %d / %d" % [LanguageManager.translate("hud_ammo"), ammo, mag_size]
 	var ammo_col := Color(0.95, 0.75, 0.3) if reloading or ammo <= 6 else Color.WHITE
 	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y - fire_r - 18.0 * sc), ammo_text, HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(24.0 * sc), ammo_col)
-	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y + fire_r + 30.0 * sc), "HOLD FIRE = AUTO", HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(14.0 * sc), Color(1, 1, 1, 0.65))
+	draw_string(f, Vector2(fire_c.x - 130.0 * sc, fire_c.y + fire_r + 30.0 * sc), LanguageManager.translate("hud_hold_fire"), HORIZONTAL_ALIGNMENT_LEFT, 260.0 * sc, int(14.0 * sc), Color(1, 1, 1, 0.65))
 	# Crosshair + hit marker, screen centre.
 	if not paused and not dead:
 		var cx := w / 2
@@ -214,41 +218,41 @@ func _draw() -> void:
 					draw_line(Vector2(cx + sx * 10, cy + sy * 10), Vector2(cx + sx * 24, cy + sy * 24), hm, 4)
 	if paused:
 		draw_rect(Rect2(Vector2.ZERO, s), Color(0.01, 0.02, 0.03, 0.82), true)
-		draw_string(f, Vector2(w / 2 - 200, h * 0.30), "MISSION PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 400, int(34.0 * sc), Color.WHITE)
+		draw_string(f, Vector2(w / 2 - 200, h * 0.30), LanguageManager.translate("pause_title"), HORIZONTAL_ALIGNMENT_CENTER, 400, int(34.0 * sc), Color.WHITE)
 		var resume_c: Vector2 = lay["resume_c"]
 		var resume_r: float = lay["resume_r"]
 		_button(resume_c, resume_r, Color(0.12, 0.42, 0.30, 0.98))
-		draw_string(f, Vector2(resume_c.x - 110.0 * sc, resume_c.y + 6.0 * sc), "RESUME", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(22.0 * sc), Color.WHITE)
+		draw_string(f, Vector2(resume_c.x - 110.0 * sc, resume_c.y + 6.0 * sc), LanguageManager.translate("pause_resume"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(22.0 * sc), Color.WHITE)
 		var menu_c: Vector2 = lay["menu_c"]
 		var menu_r: float = lay["menu_r"]
 		_button(menu_c, menu_r, Color(0.45, 0.16, 0.13, 0.98))
-		draw_string(f, Vector2(menu_c.x - 110.0 * sc, menu_c.y + 6.0 * sc), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(20.0 * sc), Color.WHITE)
+		draw_string(f, Vector2(menu_c.x - 110.0 * sc, menu_c.y + 6.0 * sc), LanguageManager.translate("pause_menu"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(20.0 * sc), Color.WHITE)
 		var sound_c: Vector2 = lay["sound_c"]
 		var sound_r: float = lay["sound_r"]
 		_button(sound_c, sound_r, Color(0.16, 0.30, 0.45, 0.98))
-		var sound_text := "SOUND: ON" if sound_on else "SOUND: OFF"
+		var sound_text := LanguageManager.translate("sound_on") if sound_on else LanguageManager.translate("sound_off")
 		draw_string(f, Vector2(sound_c.x - 120.0 * sc, sound_c.y + 6.0 * sc), sound_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
 		var voices_c: Vector2 = lay["voices_c"]
 		var voices_r: float = lay["voices_r"]
 		_button(voices_c, voices_r, Color(0.30, 0.35, 0.20, 0.98))
-		var voices_text := "VOICES: ON" if voices_on else "VOICES: OFF"
+		var voices_text := LanguageManager.translate("voices_on") if voices_on else LanguageManager.translate("voices_off")
 		draw_string(f, Vector2(voices_c.x - 120.0 * sc, voices_c.y + 6.0 * sc), voices_text, HORIZONTAL_ALIGNMENT_CENTER, 240.0 * sc, int(20.0 * sc), Color.WHITE)
 	if dead:
 		# v0.5 death overlay: dark red wash over the whole screen, big
 		# YOU DIED, final stats, RETRY + MAIN MENU. Drawn last so it
 		# covers the game buttons.
 		draw_rect(Rect2(Vector2.ZERO, s), Color(0.10, 0.01, 0.01, 0.88), true)
-		draw_string(f, Vector2(w / 2 - 320, h * 0.26), "YOU DIED", HORIZONTAL_ALIGNMENT_CENTER, 640, int(64.0 * sc), Color(0.95, 0.25, 0.18))
-		var stats := "SCORE %d    KILLS %d    WAVE %d" % [death_score, death_kills, death_wave]
+		draw_string(f, Vector2(w / 2 - 320, h * 0.26), LanguageManager.translate("death_title"), HORIZONTAL_ALIGNMENT_CENTER, 640, int(64.0 * sc), Color(0.95, 0.25, 0.18))
+		var stats := "%s %d    %s %d    %s %d" % [LanguageManager.translate("death_score"), death_score, LanguageManager.translate("death_kills"), death_kills, LanguageManager.translate("death_wave"), death_wave]
 		draw_string(f, Vector2(w / 2 - 320, h * 0.40), stats, HORIZONTAL_ALIGNMENT_CENTER, 640, int(26.0 * sc), Color(1, 0.9, 0.75))
 		var retry_c: Vector2 = lay["retry_c"]
 		var retry_r: float = lay["retry_r"]
 		_button(retry_c, retry_r, Color(0.12, 0.42, 0.30, 0.98))
-		draw_string(f, Vector2(retry_c.x - 130.0 * sc, retry_c.y + 8.0 * sc), "RETRY", HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(24.0 * sc), Color.WHITE)
+		draw_string(f, Vector2(retry_c.x - 130.0 * sc, retry_c.y + 8.0 * sc), LanguageManager.translate("death_retry"), HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(24.0 * sc), Color.WHITE)
 		var dm_c: Vector2 = lay["death_menu_c"]
 		var dm_r: float = lay["death_menu_r"]
 		_button(dm_c, dm_r, Color(0.45, 0.16, 0.13, 0.98))
-		draw_string(f, Vector2(dm_c.x - 130.0 * sc, dm_c.y + 8.0 * sc), "MAIN MENU", HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(22.0 * sc), Color.WHITE)
+		draw_string(f, Vector2(dm_c.x - 130.0 * sc, dm_c.y + 8.0 * sc), LanguageManager.translate("death_menu"), HORIZONTAL_ALIGNMENT_CENTER, 260.0 * sc, int(22.0 * sc), Color.WHITE)
 
 func _draw_compass(f: Font, w: float) -> void:
 	var heading := wrapf(-rad_to_deg(compass_yaw), 0.0, 360.0)

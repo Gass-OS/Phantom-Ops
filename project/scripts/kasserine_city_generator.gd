@@ -1,6 +1,20 @@
 extends Node3D
 class_name KasserineCityGenerator
 ## Phantom Ops v0.2 — procedural Kasserine, ~300x300 m.
+## v0.6 System 7 — buildings with REAL 3D depth + a filled city:
+##   recessed windows (dark reveal + glass set into it, sill, shutters)
+##   on front / back / side faces, arched doorways with pilasters,
+##   lintel, arch + stone steps, protruding shop fronts with striped
+##   awnings + sign boards, balconies with real railing bars, stepped
+##   parapets / merlons / string courses, setback penthouses, stair
+##   bulkheads, vent pipes. Props: benches, bins, planters, olive
+##   trees, extra palms + stalls, bus-stop shelters, plaza fountain,
+##   street-name signs, bollards, stacked crates.
+## NIGHT CONTRACT (day/night system reads these groups):
+##   "street_lamp" — every street-lamp OmniLight3D (4 near the plaza).
+##   "lit_window"  — every warm emissive window-glass MeshInstance3D
+##   (front/back/side windows + some shop glass). The day/night worker
+##   toggles these groups; nothing else is in them.
 ## Grid streets, central plaza / market square, four districts:
 ##   west  = old medina (dense, low, small footprints)
 ##   east  = modern blocks (tall, large footprints)
@@ -26,6 +40,7 @@ var _unit_box := BoxMesh.new()
 var _unit_cyl := CylinderMesh.new()
 var _unit_sphere := SphereMesh.new()
 var _cone := CylinderMesh.new()
+var _unit_torus := TorusMesh.new()
 
 var mat_asphalt: StandardMaterial3D
 var mat_sand: StandardMaterial3D
@@ -60,6 +75,15 @@ var mat_window_glass: StandardMaterial3D
 var mat_window_lit: StandardMaterial3D
 var mat_headlight: StandardMaterial3D
 var mat_pipe: StandardMaterial3D
+var mat_door_wood: StandardMaterial3D
+var mat_stone: StandardMaterial3D
+var mat_awning_stripe: StandardMaterial3D
+var mat_fountain_water: StandardMaterial3D
+var mat_bush: StandardMaterial3D
+var mat_shutter: StandardMaterial3D
+var mat_roofbox_teal: StandardMaterial3D
+var mat_goods_orange: StandardMaterial3D
+var mat_taillight: StandardMaterial3D
 var _dust: Array = []
 
 func _ready() -> void:
@@ -73,6 +97,8 @@ func _ready() -> void:
 	_cone.top_radius = 0.0
 	_cone.bottom_radius = 0.5
 	_cone.height = 1.0
+	_unit_torus.inner_radius = 0.28
+	_unit_torus.outer_radius = 0.40
 	_setup_materials()
 	_ensure_mobile_environment()
 	_build_city()
@@ -160,6 +186,20 @@ func _setup_materials() -> void:
 	mat_gold = ProceduralTextures.flat_material(Color(0.88, 0.68, 0.28), 0.35)
 	mat_gold.metallic = 0.6
 	mat_mosque = ProceduralTextures.geometric_material()
+	# v0.6 System 7 shared materials (one instance each, reused by
+	# every building / prop — never one per building).
+	mat_door_wood = ProceduralTextures.flat_material(Color(0.23, 0.16, 0.10), 0.9)
+	mat_stone = ProceduralTextures.flat_material(Color(0.55, 0.52, 0.47), 0.95)
+	mat_awning_stripe = ProceduralTextures.awning_material()
+	mat_fountain_water = ProceduralTextures.flat_material(Color(0.25, 0.55, 0.65), 0.3)
+	mat_fountain_water.emission_enabled = true
+	mat_fountain_water.emission = Color(0.20, 0.50, 0.60)
+	mat_fountain_water.emission_energy_multiplier = 0.6
+	mat_bush = ProceduralTextures.flat_material(Color(0.25, 0.42, 0.20), 0.95)
+	mat_shutter = ProceduralTextures.flat_material(Color(0.30, 0.38, 0.30), 0.9)
+	mat_roofbox_teal = ProceduralTextures.flat_material(Color(0.30, 0.45, 0.55), 0.8)
+	mat_goods_orange = ProceduralTextures.flat_material(Color(0.85, 0.60, 0.25), 0.9)
+	mat_taillight = ProceduralTextures.flat_material(Color(0.70, 0.12, 0.10), 0.5)
 
 # ---------------------------------------------------------------- build
 
@@ -326,8 +366,91 @@ func _try_building(parent: Node, block_centre: Vector2, district: String, slot: 
 	_create_building(parent, pos, Vector3(w, h, d))
 	return true
 
+# ---------------------------------------------------------------- v0.6
+# Building-depth helpers. All geometry uses the shared unit meshes /
+# shared materials; faces are local frames so the same code builds
+# front, back and side windows.
+
+# A local frame on a facade: position at the face centre, +Z pointing
+# out of the wall. Children use (along-face, up, out) coordinates.
+func _face_node(body: Node, fname: String, pos: Vector3, rot_y: float) -> Node3D:
+	var f := Node3D.new()
+	f.name = fname
+	f.position = pos
+	f.rotation.y = rot_y
+	body.add_child(f)
+	return f
+
+# One window with real depth: dark reveal box, glass set INTO the
+# reveal (glass front 0.01 behind the reveal front edge), a sill that
+# sticks out below, optional side shutters. Lit glass (~22%) uses the
+# warm emissive material and joins group "lit_window" (night contract).
+func _add_window(face: Node3D, lx: float, wy: float, ww: float, wh: float, shutters: bool) -> void:
+	_flat_box(face, "WinFrame", Vector3(lx, wy, 0.03), Vector3(ww, wh, 0.10), mat_dark)
+	var lit := rng.randf() < 0.22
+	var glass := _flat_box(face, "WinGlass", Vector3(lx, wy, 0.06), Vector3(ww - 0.3, wh - 0.3, 0.06), mat_window_lit if lit else mat_window_glass)
+	if lit:
+		glass.add_to_group("lit_window")
+	_flat_box(face, "WinSill", Vector3(lx, wy - wh * 0.5 - 0.06, 0.08), Vector3(ww + 0.3, 0.12, 0.22), mat_stone)
+	if shutters:
+		_flat_box(face, "ShutterL", Vector3(lx - ww * 0.5 - 0.22, wy, 0.05), Vector3(0.35, wh, 0.06), mat_shutter)
+		_flat_box(face, "ShutterR", Vector3(lx + ww * 0.5 + 0.22, wy, 0.05), Vector3(0.35, wh, 0.06), mat_shutter)
+
+# Arched doorway with depth: recessed wooden door, two pilasters
+# standing proud of the wall, a lintel, a half-round arch above, and
+# two stone steps in front. `islamic` picks the teal dome arch.
+func _add_door(face: Node3D, lx: float, islamic: bool) -> void:
+	var dw := 1.6
+	_flat_box(face, "DoorPanel", Vector3(lx, 1.35, 0.02), Vector3(dw, 2.7, 0.08), mat_door_wood)
+	_flat_box(face, "PilasterL", Vector3(lx - dw * 0.5 - 0.18, 1.45, 0.06), Vector3(0.28, 2.9, 0.14), mat_stone)
+	_flat_box(face, "PilasterR", Vector3(lx + dw * 0.5 + 0.18, 1.45, 0.06), Vector3(0.28, 2.9, 0.14), mat_stone)
+	_flat_box(face, "Lintel", Vector3(lx, 2.95, 0.06), Vector3(dw + 0.9, 0.3, 0.14), mat_stone)
+	var arch := MeshInstance3D.new()
+	arch.name = "DoorArch"
+	arch.mesh = _unit_sphere
+	arch.scale = Vector3(dw + 0.9, 0.8, 0.5)
+	arch.position = Vector3(lx, 3.1, 0.05)
+	arch.material_override = mat_dome if islamic else mat_stone
+	face.add_child(arch)
+	_flat_box(face, "Step1", Vector3(lx, 0.09, 0.45), Vector3(dw + 1.0, 0.18, 0.9), mat_stone)
+	_flat_box(face, "Step2", Vector3(lx, 0.27, 0.30), Vector3(dw + 0.6, 0.18, 0.55), mat_stone)
+
+# Protruding shop front at ground level: a box standing 0.7 m proud
+# of the facade, big glass display window (sometimes lit warm at
+# night — joins "lit_window"), a striped cloth awning above it and a
+# coloured sign board on top.
+func _add_shopfront(body: Node, size: Vector3, shop_half: float) -> void:
+	var sw := shop_half * 2.0
+	var fz := size.z * 0.5
+	_flat_box(body, "ShopBase", Vector3(0, 1.5, fz + 0.35), Vector3(sw, 3.0, 0.7), mat_white)
+	var shop_lit := rng.randf() < 0.30
+	var glass := _flat_box(body, "ShopGlass", Vector3(0, 1.5, fz + 0.72), Vector3(sw - 0.6, 1.7, 0.08), mat_window_lit if shop_lit else mat_window_glass)
+	if shop_lit:
+		glass.add_to_group("lit_window")
+	_flat_box(body, "ShopAwning", Vector3(0, 2.85, fz + 0.9), Vector3(sw + 0.4, 0.12, 1.1), mat_awning_stripe)
+	_flat_box(body, "ShopSign", Vector3(0, 3.35, fz + 0.72), Vector3(sw, 0.55, 0.12), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
+
+# Real balcony railing: top + mid rails, vertical bars and side rails
+# at the slab's front edge (`face_z` = facade plane, slab front is
+# face_z + 1.6). Replaces the old solid rail panel.
+func _add_balcony_railing(body: Node, bx: float, by: float, face_z: float) -> void:
+	var bw := 3.4
+	var fz := face_z + 1.5
+	_flat_box(body, "RailTop", Vector3(bx, by + 1.05, fz), Vector3(bw, 0.10, 0.10), mat_dark)
+	_flat_box(body, "RailMid", Vector3(bx, by + 0.55, fz), Vector3(bw, 0.08, 0.08), mat_dark)
+	for vi in range(3):
+		var vx := bx - bw * 0.5 + 0.2 + float(vi) * (bw - 0.4) * 0.5
+		_flat_box(body, "RailBar_%d" % vi, Vector3(vx, by + 0.55, fz), Vector3(0.08, 1.0, 0.08), mat_dark)
+	for sx in [-1.0, 1.0]:
+		_flat_box(body, "RailSide_%d" % (0 if sx < 0.0 else 1), Vector3(bx + sx * bw * 0.5, by + 1.05, face_z + 0.8), Vector3(0.08, 0.10, 1.6), mat_dark)
+
 func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 	var idx := parent.get_child_count()
+	# v0.6: function-scope so the awning / balcony blocks below can
+	# reuse the door position and shop decision made up front.
+	var door_x := -size.x * 0.30
+	var has_shop := false
+	var shop_half := 0.0
 	var body := StaticBody3D.new()
 	body.name = "Building_%02d" % idx
 	body.position = pos
@@ -349,29 +472,83 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 	# v0.5: cornice trim just under the roof line — the box stops
 	# reading as a plain slab.
 	_flat_box(body, "Cornice", Vector3(0, size.y - 0.25, 0), Vector3(size.x + 0.35, 0.35, size.z + 0.35), mat_dark)
-	# v0.5: 3D windows with real depth on the street face of taller
-	# buildings — recessed dark glass, a few lit warm. The facade
-	# texture alone made walls read flat.
-	if size.y >= 8.0:
-		var rows := 2 if size.y >= 12.0 else 1
-		for wr in range(rows):
-			var wy := 4.2 + float(wr) * 3.4
-			if wy > size.y - 1.6:
+	# v0.6 System 7 — REAL 3D depth on every face. Windows are built
+	# in a face-local frame (Node3D at the facade, +Z outward): a dark
+	# reveal box, glass set INTO the reveal (its front sits just
+	# behind the reveal's front edge), a protruding sill, and shutters
+	# on some front windows. Lit glass joins group "lit_window" (see
+	# the night contract in the file header).
+	var front := _face_node(body, "FaceFront", Vector3(0, 0, size.z * 0.5), 0.0)
+	# Shop front first: it decides where the residential door goes.
+	if size.x >= 8.0 and rng.randf() < 0.40:
+		has_shop = true
+		shop_half = minf(size.x * 0.40, 3.6) * 0.5
+		_add_shopfront(body, size, shop_half)
+		door_x = minf(shop_half + 1.2, size.x * 0.5 - 1.25)
+	_add_door(front, door_x, size.y < 7.0)
+	# Front windows: low buildings get one small row, tall ones 1-2
+	# full rows. The lowest row skips the column above the door, and
+	# on shop buildings it starts higher to clear the sign board.
+	var win_y0 := 4.6 if has_shop else 4.2
+	var win_wh := 1.9
+	var win_ww := 1.7 if size.x >= 10.0 else 1.5
+	if size.y < 8.0:
+		win_y0 = clampf(size.y - 1.9, 2.2, 3.4)
+		win_wh = 1.3
+		win_ww = 1.4
+	var rows := 1
+	if size.y >= 12.0:
+		rows = 2
+	var cols := 3 if size.x >= 10.0 else 2
+	var spacing := 0.28 if cols == 3 else 0.44
+	for wr in range(rows):
+		var wy := win_y0 + float(wr) * 3.4
+		if wy + win_wh * 0.5 > size.y - 0.3:
+			continue
+		for wc in range(cols):
+			var wx := (float(wc) - float(cols - 1) * 0.5) * size.x * spacing
+			if wy < 4.5 and absf(wx - door_x) < 2.2:
 				continue
-			for wc in range(3):
-				var wx := -size.x * 0.28 + float(wc) * size.x * 0.28
-				_flat_box(body, "WinFrame_%d_%d" % [wr, wc], Vector3(wx, wy, size.z * 0.5 + 0.06), Vector3(1.7, 1.9, 0.14), mat_dark)
-				var lit := rng.randf() < 0.22
-				_flat_box(body, "WinGlass_%d_%d" % [wr, wc], Vector3(wx, wy, size.z * 0.5 + 0.12), Vector3(1.4, 1.6, 0.08), mat_window_lit if lit else mat_window_glass)
+			if has_shop and wy < 4.5 and absf(wx) < shop_half + 0.9:
+				continue
+			_add_window(front, wx, wy, win_ww, win_wh, wr == 0 and rng.randf() < 0.5)
+	# Back face: one row on taller buildings (the street behind sees
+	# windows too, not a blank slab).
+	if size.y >= 8.0:
+		var back := _face_node(body, "FaceBack", Vector3(0, 0, -size.z * 0.5), PI)
+		for wc in range(2):
+			var wx := (float(wc) - 0.5) * size.x * 0.44
+			_add_window(back, wx, 4.2, win_ww, win_wh, false)
+	# One side face on wide modern blocks.
+	if size.x >= 12.0 and size.z >= 12.0:
+		var side := _face_node(body, "FaceSide", Vector3(size.x * 0.5, 0, 0), PI * 0.5)
+		for wc in range(2):
+			var wx := (float(wc) - 0.5) * size.z * 0.44
+			_add_window(side, wx, 4.2, win_ww, win_wh, false)
+	# v0.6: mid-floor string course on tall buildings — a thin band
+	# that breaks the facade into storeys.
+	if size.y >= 12.0:
+		_flat_box(body, "StringCourse", Vector3(0, size.y * 0.5, size.z * 0.5 + 0.05), Vector3(size.x + 0.2, 0.18, 0.12), mat_stone)
+	# v0.6: stepped parapet — a smaller second slab so the roofline
+	# is not one flat edge everywhere.
+	if rng.randf() < 0.30:
+		_flat_box(body, "ParapetStep", Vector3(0, size.y + 0.45, 0), Vector3(size.x * 0.55, 0.3, size.z * 0.55), mat_stone)
+	# v0.6: merlons along the front roof edge on some low medina roofs.
+	if size.y < 7.0 and rng.randf() < 0.35:
+		for midx in range(4):
+			var mx := -size.x * 0.375 + float(midx) * size.x * 0.25
+			_flat_box(body, "Merlon_%d" % midx, Vector3(mx, size.y + 0.55, size.z * 0.5 - 0.1), Vector3(0.5, 0.5, 0.25), mat_stone)
 	# v0.5: drain pipe down a front corner on half the buildings.
 	if rng.randf() < 0.5:
 		_flat_box(body, "Pipe", Vector3(size.x * 0.5 - 0.15, size.y * 0.5, size.z * 0.5 + 0.12), Vector3(0.18, size.y, 0.18), mat_pipe)
 	# Rooftop clutter: AC unit or water tank on about half the roofs.
+	# v0.6: shared materials only (was a fresh flat_material per
+	# building half the time).
 	if rng.randf() < 0.55:
 		var rw := rng.randf_range(0.8, 1.6)
 		var rh := rng.randf_range(0.6, 1.4)
 		var rd := rng.randf_range(0.8, 1.6)
-		var roof_mat := mat_metal if rng.randf() < 0.5 else ProceduralTextures.flat_material(Color(0.30, 0.45, 0.55), 0.8)
+		var roof_mat: Material = mat_metal if rng.randf() < 0.5 else mat_roofbox_teal
 		_flat_box(body, "RoofBox", Vector3(rng.randf_range(-size.x * 0.25, size.x * 0.25), size.y + 0.3 + rh * 0.5, rng.randf_range(-size.z * 0.25, size.z * 0.25)), Vector3(rw, rh, rd), roof_mat)
 	# v0.5: rooftop water tank (cylinder) + TV antenna on some roofs.
 	if rng.randf() < 0.35:
@@ -385,14 +562,53 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 	if rng.randf() < 0.3:
 		_flat_box(body, "Antenna", Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 1.8, rng.randf_range(-size.z * 0.3, size.z * 0.3)), Vector3(0.08, 3.6, 0.08), mat_pipe)
 		_flat_box(body, "AntennaBar", Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 3.0, rng.randf_range(-size.z * 0.3, size.z * 0.3)), Vector3(1.2, 0.06, 0.06), mat_pipe)
-	# Awning over the street-facing door on low buildings.
-	if size.y < 9.0 and rng.randf() < 0.6:
-		_flat_box(body, "Awning", Vector3(0, 2.6, size.z * 0.5 + 0.7), Vector3(3.2, 0.15, 1.4), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
-	# Balcony on taller buildings (slab + railing).
+	# v0.6: vent pipe + cap on some roofs.
+	if rng.randf() < 0.4:
+		var vent := MeshInstance3D.new()
+		vent.name = "Vent"
+		vent.mesh = _unit_cyl
+		vent.scale = Vector3(0.28, 1.2, 0.28)
+		vent.position = Vector3(rng.randf_range(-size.x * 0.3, size.x * 0.3), size.y + 0.9, rng.randf_range(-size.z * 0.3, size.z * 0.3))
+		vent.material_override = mat_pipe
+		body.add_child(vent)
+		_flat_box(body, "VentCap", vent.position + Vector3(0, 0.75, 0), Vector3(0.5, 0.1, 0.5), mat_dark)
+	# v0.6: stair bulkhead (the little rooftop stair house) on tall roofs.
+	if size.y >= 10.0 and rng.randf() < 0.25:
+		_flat_box(body, "StairBulkhead", Vector3(rng.randf_range(-size.x * 0.2, size.x * 0.2), size.y + 1.4, rng.randf_range(-size.z * 0.2, size.z * 0.2)), Vector3(2.0, 2.2, 2.4), mat_stone)
+	# v0.6: setback penthouse — a smaller upper storey so the skyline
+	# steps instead of ending in one flat roofline.
+	if rng.randf() < 0.25:
+		var pw := size.x * 0.45
+		var ph := rng.randf_range(2.2, 3.0)
+		var pd := size.z * 0.45
+		var ppos := Vector3(rng.randf_range(-1.0, 1.0), size.y + 0.3 + ph * 0.5, rng.randf_range(-1.0, 1.0))
+		_flat_box(body, "Penthouse", ppos, Vector3(pw, ph, pd), ProceduralTextures.facade_material(rng.randi_range(0, 3)))
+		_flat_box(body, "PenthouseRoof", ppos + Vector3(0, ph * 0.5 + 0.1, 0), Vector3(pw + 0.4, 0.2, pd + 0.4), mat_stone)
+		_flat_box(body, "PenthouseWin", ppos + Vector3(0, 0.1, pd * 0.5 + 0.04), Vector3(1.0, 1.1, 0.08), mat_window_glass)
+	# Awning over the street-facing door on low buildings without a
+	# shop front (shop buildings get their own striped awning).
+	if size.y < 9.0 and not has_shop and rng.randf() < 0.6:
+		_flat_box(body, "Awning", Vector3(door_x, 2.6, size.z * 0.5 + 0.7), Vector3(3.2, 0.15, 1.4), mat_canopy[rng.randi_range(0, mat_canopy.size() - 1)])
+	# Balcony on taller buildings: slab + REAL railing bars (top and
+	# mid rails, vertical bars, side rails) + support brackets, so it
+	# reads as a balcony you could stand on, not a painted stripe.
+	# The second balcony keeps the solid rail to save nodes.
 	if size.y >= 8.0 and rng.randf() < 0.7:
 		var by := rng.randf_range(3.5, size.y - 1.5)
 		_flat_box(body, "Balcony", Vector3(0, by, size.z * 0.5 + 0.8), Vector3(3.4, 0.18, 1.6), mat_sidewalk)
-		_flat_box(body, "BalconyRail", Vector3(0, by + 0.6, size.z * 0.5 + 1.5), Vector3(3.4, 0.9, 0.08), mat_dark)
+		_add_balcony_railing(body, 0.0, by, size.z * 0.5)
+		for bx in [-1.2, 1.2]:
+			var bracket := _flat_box(body, "BalconyBracket", Vector3(bx, by - 0.35, size.z * 0.5 + 0.35), Vector3(0.15, 0.7, 0.15), mat_dark)
+			bracket.rotation.x = 0.5
+		if rng.randf() < 0.4:
+			_flat_box(body, "BalconyPlanter", Vector3(-1.0, by + 0.25, size.z * 0.5 + 1.3), Vector3(0.9, 0.3, 0.3), mat_trunk)
+			var bbush := MeshInstance3D.new()
+			bbush.name = "BalconyBush"
+			bbush.mesh = _unit_sphere
+			bbush.scale = Vector3(0.7, 0.45, 0.4)
+			bbush.position = Vector3(-1.0, by + 0.55, size.z * 0.5 + 1.3)
+			bbush.material_override = mat_bush
+			body.add_child(bbush)
 		if size.y >= 14.0:
 			var by2 := by + 3.4
 			if by2 < size.y - 1.0:
@@ -430,14 +646,9 @@ func _create_building(parent: Node, pos: Vector3, size: Vector3) -> void:
 		finial.position = Vector3(0, size.y + 0.3 + size.x * 0.26, 0)
 		finial.material_override = mat_gold
 		body.add_child(finial)
-	if size.y < 7.0 and rng.randf() < 0.4:
-		var arch := MeshInstance3D.new()
-		arch.name = "Arch"
-		arch.mesh = _unit_sphere
-		arch.scale = Vector3(2.0, 1.1, 0.5)
-		arch.position = Vector3(0, 2.9, size.z * 0.5 + 0.05)
-		arch.material_override = mat_dome
-		body.add_child(arch)
+	# NOTE v0.6: the old standalone arch here was removed — every
+	# building now gets a proper arched doorway (pilasters, lintel,
+	# arch, steps) from _add_door above.
 	parent.add_child(body)
 
 # v0.4: the mosque of Kasserine — prayer hall with geometric-pattern
@@ -614,6 +825,15 @@ func _build_plaza_and_market() -> void:
 		bcol.position.y = 0.5
 		bench.add_child(bcol)
 		plaza.add_child(bench)
+	# v0.6: plaza fountain, planters between the stalls, olive trees
+	# at the plaza corners (midway between stall angles).
+	_build_fountain(plaza)
+	for i in range(10):
+		var pang := TAU * float(i) / 10.0 + 0.3 + PI / 10.0
+		_planter(plaza, Vector3(cos(pang) * 21.5, 0, sin(pang) * 21.5))
+	for i in range(4):
+		var tang := 0.3 + PI * 0.25 + float(i) * PI * 0.5
+		_tree(plaza, Vector3(cos(tang) * 21.0, 0, sin(tang) * 21.0))
 
 func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> void:
 	var stall := StaticBody3D.new()
@@ -621,7 +841,7 @@ func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> voi
 	stall.position = pos
 	stall.rotation.y = -ang
 	_flat_box(stall, "Counter", Vector3(0, 0.55, 0), Vector3(2.4, 1.1, 1.3), mat_trunk)
-	_flat_box(stall, "Goods", Vector3(0, 1.2, 0), Vector3(2.0, 0.25, 1.0), ProceduralTextures.flat_material(Color(0.85, 0.60, 0.25), 0.9))
+	_flat_box(stall, "Goods", Vector3(0, 1.2, 0), Vector3(2.0, 0.25, 1.0), mat_goods_orange)
 	for bi in range(3):
 		var basket := MeshInstance3D.new()
 		basket.name = "Basket_%d" % bi
@@ -644,6 +864,185 @@ func _stall(parent: Node, pos: Vector3, ang: float, canopy_mat: Material) -> voi
 	parent.add_child(stall)
 
 # ---------------------------------------------------------------- props
+
+# v0.6: is a ground spot free for a prop? Not on a road, not in the
+# plaza / spawn clear zone, and not inside any building / mosque rect.
+# Called only after _build_blocks_and_buildings, so `occupied` is full.
+func _spot_free(x: float, z: float, margin: float = 1.0) -> bool:
+	if Vector2(x, z).length() < 26.0:
+		return false
+	if _on_road(x, z):
+		return false
+	var r := Rect2(x - margin, z - margin, margin * 2.0, margin * 2.0)
+	for other in occupied:
+		if r.intersects(other):
+			return false
+	return true
+
+# v0.6: sidewalk bench (seat + back + legs, collides so the player
+# cannot walk through it).
+func _bench(parent: Node, pos: Vector3, rot_y: float) -> void:
+	var bench := StaticBody3D.new()
+	bench.name = "Bench"
+	bench.position = pos
+	bench.rotation.y = rot_y
+	_flat_box(bench, "Seat", Vector3(0, 0.45, 0), Vector3(2.2, 0.12, 0.6), mat_trunk)
+	_flat_box(bench, "Back", Vector3(0, 0.85, -0.28), Vector3(2.2, 0.6, 0.1), mat_trunk)
+	for lx in [-0.9, 0.9]:
+		_flat_box(bench, "Leg", Vector3(lx, 0.2, 0), Vector3(0.12, 0.4, 0.5), mat_dark)
+	var bcol := CollisionShape3D.new()
+	var bshape := BoxShape3D.new()
+	bshape.size = Vector3(2.2, 1.0, 0.7)
+	bcol.shape = bshape
+	bcol.position.y = 0.5
+	bench.add_child(bcol)
+	parent.add_child(bench)
+
+# v0.6: street bin (cylinder body + torus rim, no collision — small).
+func _bin(parent: Node, pos: Vector3) -> void:
+	var bin := MeshInstance3D.new()
+	bin.name = "Bin"
+	bin.mesh = _unit_cyl
+	bin.scale = Vector3(0.7, 1.0, 0.7)
+	bin.position = pos + Vector3(0, 0.5, 0)
+	bin.material_override = mat_dark
+	parent.add_child(bin)
+	var rim := MeshInstance3D.new()
+	rim.name = "BinRim"
+	rim.mesh = _unit_torus
+	rim.scale = Vector3(1.0, 0.6, 1.0)
+	rim.position = pos + Vector3(0, 1.0, 0)
+	rim.material_override = mat_metal
+	parent.add_child(rim)
+
+# v0.6: planter box with soil and a bush.
+func _planter(parent: Node, pos: Vector3) -> void:
+	var planter := Node3D.new()
+	planter.name = "Planter"
+	planter.position = pos
+	_flat_box(planter, "Box", Vector3(0, 0.3, 0), Vector3(1.2, 0.6, 1.2), mat_trunk)
+	_flat_box(planter, "Soil", Vector3(0, 0.58, 0), Vector3(1.0, 0.08, 1.0), mat_dirt)
+	var bush := MeshInstance3D.new()
+	bush.name = "Bush"
+	bush.mesh = _unit_sphere
+	bush.scale = Vector3(0.9, 0.7, 0.9)
+	bush.position = Vector3(0, 0.9, 0)
+	bush.material_override = mat_bush
+	planter.add_child(bush)
+	parent.add_child(planter)
+
+# v0.6: olive tree — short trunk, three canopy blobs.
+func _tree(parent: Node, pos: Vector3) -> void:
+	var tree := StaticBody3D.new()
+	tree.name = "Tree"
+	tree.position = pos
+	var trunk := MeshInstance3D.new()
+	trunk.mesh = _unit_cyl
+	trunk.scale = Vector3(0.3, 2.6, 0.3)
+	trunk.position.y = 1.3
+	trunk.material_override = mat_trunk
+	tree.add_child(trunk)
+	for i in range(3):
+		var blob := MeshInstance3D.new()
+		blob.name = "Canopy_%d" % i
+		blob.mesh = _unit_sphere
+		blob.scale = Vector3(1.8, 1.1, 1.8)
+		blob.position = Vector3(cos(TAU * float(i) / 3.0) * 0.7, 3.0, sin(TAU * float(i) / 3.0) * 0.7)
+		blob.material_override = mat_bush
+		tree.add_child(blob)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.25
+	shape.height = 2.6
+	col.shape = shape
+	col.position.y = 1.3
+	tree.add_child(col)
+	parent.add_child(tree)
+
+# v0.6: bus-stop shelter — four posts, roof, glass back panel, bench
+# seat and a yellow sign on the front post. Faces the road.
+func _bus_stop(parent: Node, pos: Vector3, rot_y: float) -> void:
+	var stop := StaticBody3D.new()
+	stop.name = "BusStop"
+	stop.position = pos
+	stop.rotation.y = rot_y
+	for px in [-1.5, 1.5]:
+		for pz in [-0.7, 0.7]:
+			var post := MeshInstance3D.new()
+			post.name = "Post"
+			post.mesh = _unit_cyl
+			post.scale = Vector3(0.1, 2.6, 0.1)
+			post.position = Vector3(px, 1.3, pz)
+			post.material_override = mat_dark
+			stop.add_child(post)
+	_flat_box(stop, "Roof", Vector3(0, 2.7, 0), Vector3(3.6, 0.15, 1.9), mat_sign_blue)
+	_flat_box(stop, "BackPanel", Vector3(0, 1.5, -0.75), Vector3(3.2, 1.6, 0.08), mat_window_glass)
+	_flat_box(stop, "Seat", Vector3(0, 0.5, -0.45), Vector3(2.8, 0.12, 0.5), mat_trunk)
+	_flat_box(stop, "Sign", Vector3(1.5, 2.2, 0.82), Vector3(0.7, 0.5, 0.08), mat_bollard)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(3.4, 2.7, 1.8)
+	col.shape = shape
+	col.position.y = 1.35
+	stop.add_child(col)
+	parent.add_child(stop)
+
+# v0.6: plaza fountain in the south-west quadrant (-16, 14) — clear
+# of the market ring, the plaza benches and the player spawn (0, 10).
+func _build_fountain(parent: Node) -> void:
+	var f := StaticBody3D.new()
+	f.name = "Fountain"
+	f.position = Vector3(-16, 0, 14)
+	var basin := MeshInstance3D.new()
+	basin.name = "Basin"
+	basin.mesh = _unit_cyl
+	basin.scale = Vector3(5.2, 0.9, 5.2)
+	basin.position.y = 0.45
+	basin.material_override = mat_stone
+	f.add_child(basin)
+	var water := MeshInstance3D.new()
+	water.name = "Water"
+	water.mesh = _unit_cyl
+	water.scale = Vector3(4.6, 0.12, 4.6)
+	water.position.y = 0.78
+	water.material_override = mat_fountain_water
+	f.add_child(water)
+	var rim := MeshInstance3D.new()
+	rim.name = "Rim"
+	rim.mesh = _unit_cyl
+	rim.scale = Vector3(5.4, 0.25, 5.4)
+	rim.position.y = 0.92
+	rim.material_override = mat_white
+	f.add_child(rim)
+	var column := MeshInstance3D.new()
+	column.name = "Column"
+	column.mesh = _unit_cyl
+	column.scale = Vector3(0.6, 1.6, 0.6)
+	column.position.y = 1.5
+	column.material_override = mat_stone
+	f.add_child(column)
+	var bowl := MeshInstance3D.new()
+	bowl.name = "Bowl"
+	bowl.mesh = _unit_cyl
+	bowl.scale = Vector3(1.6, 0.25, 1.6)
+	bowl.position.y = 2.3
+	bowl.material_override = mat_white
+	f.add_child(bowl)
+	var finial := MeshInstance3D.new()
+	finial.name = "Finial"
+	finial.mesh = _unit_sphere
+	finial.scale = Vector3(0.35, 0.5, 0.35)
+	finial.position.y = 2.6
+	finial.material_override = mat_gold
+	f.add_child(finial)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 2.6
+	shape.height = 1.0
+	col.shape = shape
+	col.position.y = 0.5
+	f.add_child(col)
+	parent.add_child(f)
 
 func _prop_box(parent: Node, prop_name: String, pos: Vector3, size: Vector3, mat: Material, collide: bool, rot_y: float = 0.0) -> Node3D:
 	var node: Node3D
@@ -717,9 +1116,12 @@ func _lamp(parent: Node, pos: Vector3) -> void:
 	# v0.5: real warm light pools at dusk — only for lamps near the
 	# plaza / spawn, where the player actually walks. Six OmniLights
 	# is cheap on a modern phone; lighting every lamp would not be.
+	# v0.6 NIGHT CONTRACT: every lamp OmniLight joins "street_lamp"
+	# (in practice 4 lamps are within 65 m of the plaza).
 	if Vector2(pos.x, pos.z).length() < 65.0:
 		var light := OmniLight3D.new()
 		light.name = "LampLight"
+		light.add_to_group("street_lamp")
 		light.position = Vector3(1.2, 4.6, 0)
 		light.light_color = Color(1.0, 0.62, 0.30)
 		light.light_energy = 1.4
@@ -748,7 +1150,7 @@ func _car(parent: Node, pos: Vector3, rot_y: float, paint: Material) -> void:
 	_flat_box(car, "BumperR", Vector3(0, 0.42, -2.22), Vector3(1.9, 0.18, 0.12), mat_dark)
 	for hx in [-0.6, 0.6]:
 		_flat_box(car, "Headlight", Vector3(hx, 0.72, 2.21), Vector3(0.4, 0.16, 0.06), mat_headlight)
-		_flat_box(car, "Taillight", Vector3(hx, 0.72, -2.21), Vector3(0.4, 0.14, 0.06), ProceduralTextures.flat_material(Color(0.70, 0.12, 0.10), 0.5))
+		_flat_box(car, "Taillight", Vector3(hx, 0.72, -2.21), Vector3(0.4, 0.14, 0.06), mat_taillight)
 	for wx in [-0.85, 0.85]:
 		for wz in [-1.4, 1.4]:
 			var wheel := MeshInstance3D.new()
@@ -829,9 +1231,13 @@ func _build_props() -> void:
 		boll.position = Vector3(cos(ang) * 25.5, 0.45, sin(ang) * 25.5)
 		boll.material_override = mat_bollard
 		props.add_child(boll)
-	# Street name signs on poles at 8 intersections.
+	# Street name signs on poles at 8 intersections, with a Label3D
+	# street name above each board (Latin names — the fallback font
+	# has no Arabic glyphs for procedural text, so Latin only).
 	var sign_spots: Array[Vector3] = [Vector3(56, 0, 56), Vector3(-56, 0, 56), Vector3(56, 0, -56), Vector3(-56, 0, -56), Vector3(6, 0, 106), Vector3(-106, 0, 6), Vector3(106, 0, -6), Vector3(-6, 0, -106)]
-	for sp in sign_spots:
+	var street_names: Array[String] = ["RUE BOURGUIBA", "AV. REPUBLIQUE", "RUE DE LA MEDINA", "PLACE DU MARCHE", "RUE DES ORANGERS", "AV. HABIB THAMEUR", "RUE EL JAZIRA", "IMPASSE DU SOUK"]
+	for si in range(sign_spots.size()):
+		var sp: Vector3 = sign_spots[si]
 		var pole := MeshInstance3D.new()
 		pole.name = "SignPole"
 		pole.mesh = _unit_cyl
@@ -840,6 +1246,17 @@ func _build_props() -> void:
 		pole.material_override = mat_dark
 		props.add_child(pole)
 		_flat_box(props, "Sign", sp + Vector3(0, 2.5, 0), Vector3(1.6, 0.5, 0.08), mat_sign_blue)
+		var label := Label3D.new()
+		label.name = "StreetSign_%d" % si
+		label.text = street_names[si]
+		label.font_size = 48
+		label.pixel_size = 0.01
+		label.modulate = Color(1.0, 1.0, 1.0)
+		label.outline_size = 8
+		label.outline_modulate = Color(0.05, 0.05, 0.08)
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.position = sp + Vector3(0, 3.1, 0)
+		props.add_child(label)
 	for i in range(14):
 		var p := _random_off_road_point()
 		var rock := MeshInstance3D.new()
@@ -849,6 +1266,87 @@ func _build_props() -> void:
 		rock.position = p + Vector3(0, 0.2, 0)
 		rock.material_override = mat_rock
 		props.add_child(rock)
+	# v0.6 System 7 — fill the city. Every placed prop is checked
+	# with _spot_free (no roads, no buildings, plaza/spawn clear).
+	# Sidewalk benches + bins along the main roads.
+	var bench_spots: Array[Vector3] = []
+	for rx in [-50.0, 0.0, 50.0]:
+		for bz in [-120.0, -80.0, -40.0, 40.0, 80.0, 120.0]:
+			bench_spots.append(Vector3(rx + 6.8, 0, bz))
+			bench_spots.append(Vector3(rx - 6.8, 0, bz + 20.0))
+	var placed_benches := 0
+	for bs in bench_spots:
+		if placed_benches >= 10:
+			break
+		if _spot_free(bs.x, bs.z, 1.5):
+			var nearest_road := 0.0
+			var best := 1.0e9
+			for r in ROAD_POS:
+				var dd := absf(bs.x - r)
+				if dd < best:
+					best = dd
+					nearest_road = r
+			var brot := PI * 0.5 if bs.x < nearest_road else -PI * 0.5
+			_bench(props, bs, brot)
+			placed_benches += 1
+	var placed_bins := 0
+	for rx in [-50.0, 0.0, 50.0]:
+		for bz in [-100.0, -60.0, -20.0, 20.0, 60.0, 100.0]:
+			if placed_bins >= 12:
+				break
+			var bp := Vector3(rx + 6.8, 0, bz + 10.0)
+			if _spot_free(bp.x, bp.z, 0.8):
+				_bin(props, bp)
+				placed_bins += 1
+	# More palms along the roads.
+	var placed_palms := 0
+	for i in range(8):
+		var road_x2: float = ROAD_POS[i % ROAD_POS.size()]
+		var pz := -118.0 + float(i) * 32.0
+		if _spot_free(road_x2 - 7.5, pz, 1.0):
+			_palm(props, Vector3(road_x2 - 7.5, 0, pz))
+			placed_palms += 1
+	# Four more market stalls with goods, off the plaza ring.
+	for i in range(4):
+		var sp2 := _random_off_road_point()
+		_stall(props, sp2, rng.randf() * TAU, mat_canopy[i % mat_canopy.size()])
+	# Stacked crates (two-high) and extra barrels.
+	for i in range(10):
+		var cp := _random_off_road_point()
+		_prop_box(props, "CrateStack", cp, Vector3(1.1, 1.1, 1.1), mat_trunk, true, rng.randf() * TAU)
+		_prop_box(props, "CrateTop", cp + Vector3(0, 1.1, 0), Vector3(0.9, 0.9, 0.9), mat_trunk, false, rng.randf() * TAU)
+	for i in range(8):
+		var bp2 := _random_off_road_point()
+		var barrel2 := MeshInstance3D.new()
+		barrel2.name = "Barrel"
+		barrel2.mesh = _unit_cyl
+		barrel2.scale = Vector3(0.8, 1.1, 0.8)
+		barrel2.position = bp2 + Vector3(0, 0.55, 0)
+		barrel2.material_override = mat_barrier if i % 3 == 0 else mat_metal
+		props.add_child(barrel2)
+	# Olive trees out in the blocks.
+	for i in range(4):
+		_tree(props, _random_off_road_point())
+	# Bus-stop shelters beside roads (first two free candidates win).
+	var stop_spots: Array[Vector3] = [Vector3(57.5, 0, -70), Vector3(57.5, 0, 70), Vector3(-57.5, 0, -70), Vector3(-57.5, 0, 70), Vector3(7.5, 0, 57.5), Vector3(-7.5, 0, -57.5)]
+	var placed_stops := 0
+	for ss in stop_spots:
+		if placed_stops >= 2:
+			break
+		if _spot_free(ss.x, ss.z, 2.5):
+			_bus_stop(props, ss, -PI * 0.5 if ss.x > 0.0 else PI * 0.5)
+			placed_stops += 1
+	# Bollards ringing the plaza fountain.
+	for i in range(8):
+		var fang := TAU * float(i) / 8.0
+		var boll2 := MeshInstance3D.new()
+		boll2.name = "Bollard"
+		boll2.mesh = _unit_cyl
+		boll2.scale = Vector3(0.3, 0.9, 0.3)
+		boll2.position = Vector3(-16 + cos(fang) * 3.6, 0.45, 14 + sin(fang) * 3.6)
+		boll2.material_override = mat_bollard
+		props.add_child(boll2)
+	print("Phantom Ops: props filled — benches %d, bins %d, extra palms %d, bus stops %d" % [placed_benches, placed_bins, placed_palms, placed_stops])
 
 func _random_off_road_point() -> Vector3:
 	for attempt in range(20):
@@ -901,7 +1399,7 @@ func _build_landmark_and_horizon() -> void:
 	shaft.mesh = _unit_cyl
 	shaft.scale = Vector3(2.4, 24.0, 2.4)
 	shaft.position.y = 12.0
-	shaft.material_override = ProceduralTextures.flat_material(Color(0.92, 0.88, 0.78), 0.95)
+	shaft.material_override = mat_white
 	minaret.add_child(shaft)
 	var balcony := MeshInstance3D.new()
 	balcony.mesh = _unit_cyl
@@ -913,7 +1411,7 @@ func _build_landmark_and_horizon() -> void:
 	cap.mesh = _cone
 	cap.scale = Vector3(3.2, 4.0, 3.2)
 	cap.position.y = 26.0
-	cap.material_override = ProceduralTextures.flat_material(Color(0.25, 0.45, 0.35), 0.8)
+	cap.material_override = mat_dome
 	minaret.add_child(cap)
 	# Distant skyline silhouette ring — the city reads from afar.
 	var skyline := Node3D.new()

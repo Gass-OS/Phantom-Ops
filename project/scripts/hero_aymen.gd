@@ -1,15 +1,18 @@
 extends RefCounted
 class_name HeroAymen
 ## v0.4 — Aymen himself, as the hero of Phantom Ops.
-## The scan (res://assets/characters/aymen.glb) is a half-body
-## photogrammetry mesh: head + torso, ~0.96 m tall, centred on origin,
-## no legs, no skeleton. It is used ONLY as the hero — never as an
-## enemy, never as a shootable target, never as a generic civilian.
+## v0.6 — high-detail PBR scan (aymen_pbr.glb, 32,768 verts, 4K PBR
+## textures) tried first, LowPoly scan (aymen.glb) kept as fallback.
+## Both scans are the same half-body photogrammetry mesh: head +
+## torso, ~0.96 m tall, centred on origin, no legs, no skeleton.
+## Used ONLY as the hero — never as an enemy, never as a shootable
+## target, never as a generic civilian.
 ## The figure is completed below with a procedural long jebba robe,
 ## which hides the missing legs (same trick as the citizens).
-## If the GLB fails to load, a procedural fallback hero is built
+## If both GLBs fail to load, a procedural fallback hero is built
 ## instead so the game never breaks.
 
+const PBR_PATH := "res://assets/characters/aymen_pbr.glb"
 const GLB_PATH := "res://assets/characters/aymen.glb"
 # Mesh spans y -0.48..+0.48 around its origin; place the origin at
 # 1.32 m so the head sits at ~1.8 m and the torso meets the robe.
@@ -21,12 +24,27 @@ static func build(parent: Node, pos: Vector3, rot_y: float = 0.0) -> Node3D:
 	hero.position = pos
 	hero.rotation.y = rot_y
 	parent.add_child(hero)
-	var scan: PackedScene = load(GLB_PATH) as PackedScene
+	# v0.6 — try the high-detail PBR scan first, fall back to LowPoly.
+	# ORIENTATION (verified headless, Godot 4.2.2): the PBR file stores
+	# the mesh head-down with height along local Z and carries a +90
+	# deg X node rotation. Godot's glTF importer applies that rotation
+	# to the MeshInstance3D, so the figure arrives UPRIGHT (head +Y,
+	# face +Z) with the same ~0.96 m height and same origin as the
+	# LowPoly scan. Do NOT add a rotation fix here: setting
+	# rotation.x = -PI/2 on the root would undo the importer's
+	# correction and lay the figure on its back (verified in test).
+	var scan: PackedScene = load(PBR_PATH) as PackedScene
+	var used_pbr := scan != null
+	if scan == null:
+		scan = load(GLB_PATH) as PackedScene
 	if scan != null:
 		var mesh_node := scan.instantiate()
 		mesh_node.position = Vector3(0, MESH_Y, 0)
 		hero.add_child(mesh_node)
-		print("Phantom Ops: Aymen hero scan loaded")
+		if used_pbr:
+			print("Phantom Ops: Aymen hero scan loaded: PBR")
+		else:
+			print("Phantom Ops: Aymen hero scan loaded: LowPoly fallback")
 	else:
 		print("Phantom Ops: Aymen scan missing, procedural fallback hero used")
 		_build_fallback(hero)
