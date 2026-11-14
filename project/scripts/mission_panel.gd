@@ -17,6 +17,7 @@ var _distance_label: Label
 var _reward_label: Label
 var _timer_label: Label
 var _banner_label: Label
+var _chapter_label: Label  # v0.7: "CHAPTER 1 — FIRST PATROL", hidden in free play.
 var _banner_timer: float = 0.0
 var _panel: PanelContainer
 
@@ -42,6 +43,13 @@ func _build() -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 2)
 	_panel.add_child(column)
+
+	# v0.7: chapter header, shown only while a story chapter is active.
+	_chapter_label = Label.new()
+	_chapter_label.add_theme_font_size_override("font_size", 16)
+	_chapter_label.add_theme_color_override("font_color", Color(0.65, 0.85, 1.0))
+	_chapter_label.visible = false
+	column.add_child(_chapter_label)
 
 	_title_label = Label.new()
 	_title_label.add_theme_font_size_override("font_size", 21)
@@ -141,3 +149,15 @@ func clear() -> void:
 	if is_instance_valid(_banner_label):
 		_banner_label.visible = false
 	_banner_timer = 0.0
+
+## v0.7: show the chapter header line ("CHAPTER 1 — FIRST PATROL").
+## Hidden in free play; call clear_chapter() when the chapter ends.
+func set_chapter(text: String) -> void:
+	if is_instance_valid(_chapter_label):
+		_chapter_label.text = text
+		_chapter_label.visible = text != ""
+
+func clear_chapter() -> void:
+	if is_instance_valid(_chapter_label):
+		_chapter_label.visible = false
+		_chapter_label.text = ""

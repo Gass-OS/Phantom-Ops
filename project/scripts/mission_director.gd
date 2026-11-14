@@ -56,13 +56,60 @@ class_name PhantomMissionDirector
 ##   mission_failed(id, title, reason). Public methods the coordinator or
 ##   other workers may call: notify_help_given(citizen), skip_mission(),
 ##   current_mission_id().
+##
+## v0.7 STORY CAMPAIGN — chapter mode (Worker B: Chapter Flow).
+##   start_chapter(n) (n = 1..5) builds that chapter's objective sequence
+##   out of the EXISTING mission types (patrol / help / respond / chase)
+##   plus two chapter-only types (informant / boss) and runs it instead
+##   of the free-play chain. When no chapter is active, the v0.6
+##   free-play chain works exactly as before.
+##   Chapters (vs "The Wolves of Kasserine", boss Khaled "The Wolf"):
+##     1 FIRST PATROL  — patrol 3 checkpoints -> help 1 citizen -> stop
+##                       1 robbery (2 criminals).
+##     2 SOUK ROBBERY  — robbery at the souk stalls (3 criminals), then
+##                       chase the fleeing thief (catch within 4 m).
+##     3 NIGHT SHIFT   — force night + more rain; defend the plaza (4
+##                       criminals), then the mosque (5 criminals).
+##     4 THE INFORMANT — find the ONE suspicious man in the crowd and
+##                       CHECK him; checking anyone else just greets
+##                       them and the chapter continues.
+##     5 THE WOLF      — boss fight at the plaza (BossEnemy, another
+##                       worker's script; falls back to a 5-criminal
+##                       wave if the boss script is absent).
+##   Flow: intro card (chapter_intro.gd, ~7 s, SKIP, world paused) ->
+##   objectives via the mission panel + beacon -> results card
+##   (NEXT CHAPTER / MENU) or fail card (RETRY / MENU); chapter 5 shows
+##   the ending card. Death mid-chapter: YOU DIED -> RETRY restarts
+##   THAT chapter (player.gd sets the static pending_retry_chapter and
+##   reloads the scene; _check_pending_chapter picks it up).
+##   CampaignManager (another worker's autoload) is notified DEFENSIVELY:
+##   it is looked up with get_node_or_null("CampaignManager") — NEVER
+##   referenced by bare name, because the file must still parse if the
+##   autoload is ever unregistered. Real contract (campaign_manager.gd):
+##   - The menu sets the chapter with CampaignManager.start_chapter(n)
+##     (sets current_chapter) before going to intro.tscn, so on scene
+##     start this director reads CampaignManager.current_chapter and
+##     starts it. No pending_chapter property exists.
+##   - Completion: complete_chapter(chapter, xp_reward, money_reward).
+##     money_reward is passed as 0 ON PURPOSE: the chapter's dinars
+##     (step rewards + completion bonus) were already paid through
+##     GameManager.add_money, and CampaignManager syncs them via
+##     money_changed — passing them again would pay them twice.
+##   - Failure has no CampaignManager method; _notify_campaign_failed
+##     tries on_chapter_failed / chapter_failed and does nothing when
+##     neither exists. Without CampaignManager the chapters still run
+##     start-to-finish; only the save is missing.
 
 signal mission_started(mission_id: String, title: String)
 signal mission_completed(mission_id: String, title: String, money: int, score: int)
 signal mission_failed(mission_id: String, title: String, reason: String)
+signal chapter_started(chapter: int)
+signal chapter_completed(chapter: int, xp: int, money: int, time_sec: float)
+signal chapter_failed(chapter: int, reason: String)
 
 const PanelScript := preload("res://scripts/mission_panel.gd")
 const EnemyScript := preload("res://scripts/enemy_ai.gd")
+const ChapterIntroScript := preload("res://scripts/chapter_intro.gd")
 
 # First mission starts this long after the game starts; gap between missions.
 const START_DELAY := 3.0
@@ -135,6 +182,43 @@ var _help_hold := 0.0
 var _patrol_points: Array = []
 var _patrol_index := 0
 
+# --- v0.7 Story Campaign: chapter mode ------------------------------------
+# pending_retry_chapter survives a scene reload (static): player.gd sets
+# it on death-RETRY so the fresh director restarts that chapter.
+static var pending_retry_chapter := 0
+const CHAPTER_COUNT := 5
+const CHAPTER_BONUS_MONEY := 250
+const CHAPTER_BONUS_SCORE := 500
+const FINAL_BONUS_MONEY := 500
+const FINAL_BONUS_SCORE := 1000
+# Key city spots. Mosque (-75, 75) and plaza (0, 0) are the v0.4/v0.5
+# landmarks; the souk stalls sit on the plaza's south-east street;
+# the boss waits north of the player's (0, 10) spawn so he is never
+# on top of the player when the chapter starts.
+const PLAZA_POINT := Vector3(0, 0, 0)
+const MOSQUE_POINT := Vector3(-75, 0, 75)
+const SOUK_POINT := Vector3(30, 0, 45)
+const BOSS_POINT := Vector3(0, 0, -30)
+var current_chapter := 0  # 0 = free play, 1..5 = story chapter active
+var _chapter_active := false
+var _chapter_steps: Array = []
+var _chapter_step := 0
+var _chapter_elapsed := 0.0
+var _chapter_start_score := 0
+var _chapter_start_kills := 0
+var _chapter_start_money := 0
+var _chapter_intro: CanvasLayer = null
+var _informant: Node3D = null
+var _informant_pick_t := 0.0
+var _boss: Node3D = null
+var _boss_fallback := false
+# Chapter 3 night state, saved so it can be restored when the chapter ends.
+var _night_saved := false
+var _saved_time_of_day := 0.15
+var _saved_time_scale := 1.0
+var _saved_rain_min := 90.0
+var _saved_rain_max := 180.0
+
 func _ready() -> void:
 	_panel = PanelScript.new()
 	_panel.name = "MissionPanel"
@@ -147,6 +231,9 @@ func _ready() -> void:
 	# interaction manager reports help given (deferred — the manager
 	# node may be added after this one; guarded if it never exists).
 	call_deferred("_wire_interaction")
+	# v0.7: a pending chapter from the menu (CampaignManager) or a
+	# death-RETRY (static flag) starts here, after the scene settles.
+	call_deferred("_check_pending_chapter")
 
 func _wire_interaction() -> void:
 	var scene := get_tree().current_scene
@@ -157,6 +244,9 @@ func _wire_interaction() -> void:
 		return
 	if not im.is_connected("help_completed", notify_help_given):
 		im.connect("help_completed", notify_help_given)
+	# v0.7: chapter 4 (THE INFORMANT) completes through CHECK.
+	if im.has_signal("check_completed") and not im.is_connected("check_completed", _on_check_completed):
+		im.connect("check_completed", _on_check_completed)
 
 func _find_player() -> void:
 	if is_instance_valid(_player):
@@ -171,6 +261,11 @@ func _process(delta: float) -> void:
 	_find_player()
 	_pulse += delta
 	_pulse_beacon()
+	# v0.7: chapter clock (results card + CampaignManager stats). Only
+	# counts while a chapter step is running or between steps; the
+	# intro card pauses the tree, so its ~7 s are never counted.
+	if _chapter_active and (_state == "active" or _state == "between"):
+		_chapter_elapsed += delta
 	match _state:
 		"waiting":
 			_delay_timer -= delta
@@ -185,10 +280,20 @@ func _process(delta: float) -> void:
 
 ## Public API ---------------------------------------------------------------
 
+## The step dict the director is currently running: the active chapter
+## step in chapter mode, else the current free-play mission. {} when
+## there is nothing to run (empty mission list outside a chapter).
+func _current_data() -> Dictionary:
+	if _chapter_active and _chapter_step >= 0 and _chapter_step < _chapter_steps.size():
+		return _chapter_steps[_chapter_step]
+	if missions.is_empty():
+		return {}
+	return missions[current_index % missions.size()]
+
 func current_mission_id() -> String:
 	if _state != "active":
 		return ""
-	return String(missions[current_index % missions.size()].get("id", ""))
+	return String(_current_data().get("id", ""))
 
 ## Called by the citizen worker / coordinator when its help interaction
 ## happens. Completes HELP instantly if that mission is active. Safe to
@@ -196,7 +301,7 @@ func current_mission_id() -> String:
 func notify_help_given(citizen: Node) -> void:
 	if _state != "active":
 		return
-	if String(missions[current_index % missions.size()].get("type", "")) != "help":
+	if String(_current_data().get("type", "")) != "help":
 		return
 	if is_instance_valid(_help_citizen) and citizen != _help_citizen:
 		return  # help given to a different citizen; ignore
@@ -210,9 +315,9 @@ func skip_mission() -> void:
 # --- Mission lifecycle ------------------------------------------------------
 
 func _start_current_mission() -> void:
-	if missions.is_empty():
+	var data: Dictionary = _current_data()
+	if data.is_empty():
 		return
-	var data: Dictionary = missions[current_index % missions.size()]
 	_state = "active"
 	_time_left = float(data.get("time_limit", 120.0))
 	_help_hold = 0.0
@@ -221,12 +326,18 @@ func _start_current_mission() -> void:
 	_respond_targets.clear()
 	_chase_target = null
 	_help_citizen = null
+	_informant = null
+	_informant_pick_t = 0.0
+	_boss = null
+	_boss_fallback = false
 
 	var title := _tr(String(data.get("title_key", "")), String(data.get("title", "")))
 	var detail := _tr(String(data.get("detail_key", "")), String(data.get("detail", "")))
 	if is_instance_valid(_panel):
 		_panel.show_mission(title, detail,
 			int(data.get("reward_money", 0)), int(data.get("reward_score", 0)))
+		if _chapter_active:
+			_panel.set_chapter("CHAPTER %d — %s" % [current_chapter, _chapter_title(current_chapter)])
 	mission_started.emit(String(data.get("id", "")), title)
 
 	match String(data.get("type", "")):
@@ -244,13 +355,30 @@ func _start_current_mission() -> void:
 			if _patrol_points.is_empty():
 				_patrol_points = [Vector3(data.get("point", Vector3.ZERO))]
 			_create_objective(_patrol_points[0], 4.0, true)
+		"informant":
+			# v0.7 ch4: pick the informant now (citizens may still be
+			# spawning; _tick_informant keeps retrying until one is found).
+			_pick_informant()
+			var ipos: Vector3 = Vector3(data.get("point", PLAZA_POINT))
+			if is_instance_valid(_informant):
+				ipos = _informant.global_position
+			_create_objective(ipos, 5.0, false)
+		"boss":
+			# v0.7 ch5: the boss at the plaza, or a tough wave if the
+			# boss script (another worker) is not in the project yet.
+			_create_objective(Vector3(data.get("point", BOSS_POINT)), 6.0, false)
+			if not _spawn_boss(Vector3(data.get("point", BOSS_POINT))):
+				push_warning("MissionDirector: boss_enemy.gd missing — "
+					+ "chapter 5 falls back to a tough criminal wave")
+				_boss_fallback = true
+				_spawn_respond_enemies(Vector3(data.get("point", BOSS_POINT)), 5)
 		_:
 			_create_objective(Vector3(data.get("point", Vector3.ZERO)), 3.0, true)
 
 func _complete_current() -> void:
 	if _state != "active":
 		return
-	var data: Dictionary = missions[current_index % missions.size()]
+	var data: Dictionary = _current_data()
 	var title := _tr(String(data.get("title_key", "")), String(data.get("title", "")))
 	_state = "between"
 	_delay_timer = BETWEEN_DELAY
@@ -262,13 +390,25 @@ func _complete_current() -> void:
 		_panel.show_banner(
 			_tr("mission_complete", "MISSION COMPLETE") + "  +%d dinars  +%d XP" % [money, score], true)
 	mission_completed.emit(String(data.get("id", "")), title, money, score)
+	if _chapter_active:
+		# Advance to the next chapter step; the last step finishes
+		# the chapter (results / ending card) instead of chaining.
+		_chapter_step += 1
+		if _chapter_step >= _chapter_steps.size():
+			_finish_chapter()
+		return
 	current_index = (current_index + 1) % missions.size()
 
 func _fail_current(reason: String) -> void:
 	if _state != "active":
 		return
-	var data: Dictionary = missions[current_index % missions.size()]
+	var data: Dictionary = _current_data()
 	var title := _tr(String(data.get("title_key", "")), String(data.get("title", "")))
+	if _chapter_active:
+		# A failed step fails the whole chapter: fail card with
+		# RETRY (same chapter) / MENU — no auto-advance.
+		_fail_chapter(reason)
+		return
 	_state = "between"
 	_delay_timer = BETWEEN_DELAY
 	_cleanup_targets()
@@ -309,7 +449,7 @@ func _tick_active(delta: float) -> void:
 	if is_instance_valid(_panel):
 		_panel.set_time_left(_time_left)
 
-	var data: Dictionary = missions[current_index % missions.size()]
+	var data: Dictionary = _current_data()
 	match String(data.get("type", "")):
 		"respond":
 			_tick_respond()
@@ -319,6 +459,10 @@ func _tick_active(delta: float) -> void:
 			_tick_chase(delta)
 		"patrol":
 			_tick_patrol()
+		"informant":
+			_tick_informant(delta)
+		"boss":
+			_tick_boss()
 
 func _player_dist_to(pos: Vector3) -> float:
 	if not is_instance_valid(_player):
@@ -422,7 +566,7 @@ func _start_help_mission() -> void:
 	else:
 		# No citizens spawned (yet): fall back to a fixed marker point.
 		push_warning("MissionDirector: HELP mission found no civilian, using fallback point")
-		_create_objective(Vector3(missions[current_index % missions.size()].get("point", Vector3.ZERO)), 5.0, false)
+		_create_objective(Vector3(_current_data().get("point", Vector3.ZERO)), 5.0, false)
 
 func _spawn_respond_enemies(point: Vector3, count: int) -> void:
 	for i in range(count):
@@ -575,7 +719,7 @@ func _on_objective_reached(body: Node3D) -> void:
 		return
 	if not is_instance_valid(_objective):
 		return
-	var data: Dictionary = missions[current_index % missions.size()]
+	var data: Dictionary = _current_data()
 	if String(data.get("type", "")) != "patrol":
 		return
 	_patrol_index += 1
@@ -599,6 +743,12 @@ func _cleanup_targets() -> void:
 	_chase_target = null
 	_help_citizen = null
 	_help_hold = 0.0
+	# v0.7: chapter-only live targets.
+	if is_instance_valid(_boss):
+		_boss.queue_free()
+	_boss = null
+	_boss_fallback = false
+	_informant = null
 
 func _clear_objective() -> void:
 	if is_instance_valid(_objective):
@@ -606,6 +756,493 @@ func _clear_objective() -> void:
 	_objective = null
 	_beacon = null
 	_beacon_mat = null
+
+# --- v0.7 Story Campaign --------------------------------------------------
+# Chapter mode. All chapter steps reuse the v0.6 mission machinery
+# (panel + beacon + tick logic); only "informant" and "boss" are new
+# types, and they live here too. Free play is untouched when no chapter
+# is active (current_chapter == 0).
+
+## Start chapter `n` (1..5). Shows the intro card first; the first
+## objective starts when the card closes (SKIP or ~7 s timer).
+func start_chapter(n: int) -> void:
+	if n < 1 or n > CHAPTER_COUNT:
+		push_warning("MissionDirector: no chapter %d (1..%d)" % [n, CHAPTER_COUNT])
+		return
+	if _state == "active":
+		_cleanup_targets()
+	current_chapter = n
+	_chapter_active = true
+	_chapter_steps = _build_chapter_steps(n)
+	_chapter_step = 0
+	_chapter_elapsed = 0.0
+	_chapter_start_score = _gm_score()
+	_chapter_start_kills = _gm_kills()
+	_chapter_start_money = _gm_money()
+	# Keep CampaignManager.current_chapter in sync with what is
+	# actually playing (matters for NEXT-chapter and for DEPLOY
+	# after MENU: the menu replays current_chapter). Harmless when
+	# the autoload is absent; start_chapter() there is only a setter
+	# + unlock check, never a scene change.
+	var cm := _campaign_manager()
+	if cm != null and cm.has_method("start_chapter"):
+		cm.call("start_chapter", n)
+	_apply_chapter_environment(n)
+	_ensure_chapter_intro()
+	_state = "intro"  # _process has no "intro" arm: nothing ticks.
+	chapter_started.emit(n)
+	if is_instance_valid(_panel):
+		_panel.set_chapter("CHAPTER %d — %s" % [n, _chapter_title(n)])
+	_chapter_intro.show_intro(n, _chapter_title(n), _chapter_story(n),
+		_tr("boss_intro", "Khaled \"The Wolf\" — leader of the Wolves. He does not run.") if n == 5 else "")
+
+## The objective sequence for a chapter. Each step is a mission dict
+## (same fields as the free-play `missions` array); the panel, beacon
+## and tick logic are shared.
+func _build_chapter_steps(n: int) -> Array:
+	match n:
+		1:
+			return [
+				{
+					"id": "ch1_patrol", "type": "patrol",
+					"title_key": "mission_patrol", "title": "🚓 PATROL THE DISTRICT",
+					"detail_key": "mission_patrol_detail",
+					"detail": "Patrol duty: visit all 3 checkpoints in order.",
+					"point": Vector3(60, 0, 80), "reward_money": 120, "reward_score": 250,
+					"time_limit": 240.0,
+					"checkpoints": [Vector3(60, 0, 80), Vector3(-70, 0, -60), Vector3(0, 0, -110)],
+				},
+				{
+					"id": "ch1_help", "type": "help",
+					"title_key": "mission_help", "title": "🤝 HELP A CITIZEN IN NEED",
+					"detail_key": "mission_help_detail",
+					"detail": "A poor citizen needs help. Reach them and give what you can.",
+					"point": Vector3(-30, 0, 45), "reward_money": 80, "reward_score": 150,
+					"time_limit": 180.0,
+				},
+				{
+					"id": "ch1_respond", "type": "respond",
+					"title_key": "mission_respond", "title": "🚨 RESPOND: ROBBERY IN PROGRESS",
+					"detail_key": "mission_respond_detail",
+					"detail": "Robbery reported! Reach the marked location and stop the criminals.",
+					"point": Vector3(40, 0, -60), "reward_money": 150, "reward_score": 300,
+					"time_limit": 180.0, "enemy_count": 2,
+				},
+			]
+		2:
+			return [
+				{
+					"id": "ch2_respond", "type": "respond",
+					"title_key": "mission_respond", "title": "🚨 ROBBERY AT THE SOUK",
+					"detail_key": "", "detail": "Robbery at the market stalls! Stop the thieves.",
+					"point": SOUK_POINT, "reward_money": 200, "reward_score": 400,
+					"time_limit": 180.0, "enemy_count": 3,
+				},
+				{
+					"id": "ch2_chase", "type": "chase",
+					"title_key": "mission_chase", "title": "🏃 CHASE THE FLEEING THIEF",
+					"detail_key": "mission_chase_detail",
+					"detail": "A thief is fleeing on foot! Catch him before he escapes.",
+					"point": SOUK_POINT, "reward_money": 200, "reward_score": 400,
+					"time_limit": 120.0,
+				},
+			]
+		3:
+			return [
+				{
+					"id": "ch3_plaza", "type": "respond",
+					"title_key": "", "title": "🌙 DEFEND THE PLAZA — WAVE 1",
+					"detail_key": "", "detail": "Night attack! Criminals are hitting the plaza. Stop them all.",
+					"point": PLAZA_POINT, "reward_money": 200, "reward_score": 400,
+					"time_limit": 240.0, "enemy_count": 4,
+				},
+				{
+					"id": "ch3_mosque", "type": "respond",
+					"title_key": "", "title": "🌙 DEFEND THE MOSQUE — WAVE 2",
+					"detail_key": "", "detail": "Wave 2 — they are attacking the mosque now. Hold the line!",
+					"point": MOSQUE_POINT, "reward_money": 250, "reward_score": 500,
+					"time_limit": 240.0, "enemy_count": 5,
+				},
+			]
+		4:
+			return [
+				{
+					"id": "ch4_informant", "type": "informant",
+					"title_key": "", "title": "🕵️ FIND THE INFORMANT",
+					"detail_key": "", "detail": "Someone in the crowd knows where The Wolf hides. Find the suspicious man and CHECK him.",
+					"point": PLAZA_POINT, "reward_money": 200, "reward_score": 500,
+					"time_limit": 300.0,
+				},
+			]
+		5:
+			return [
+				{
+					"id": "ch5_boss", "type": "boss",
+					"title_key": "", "title": "🐺 THE WOLF — FINAL FIGHT",
+					"detail_key": "", "detail": "Khaled \"The Wolf\" is waiting at the plaza. Take him down and free Kasserine!",
+					"point": BOSS_POINT, "reward_money": 500, "reward_score": 1000,
+					"time_limit": 600.0,
+				},
+			]
+	return []
+
+# --- Chapter titles / stories (LanguageManager keys; English fallback) -----
+
+func _chapter_title(n: int) -> String:
+	var fallbacks := ["", "FIRST PATROL", "THE SOUK ROBBERY", "NIGHT SHIFT", "THE INFORMANT", "THE WOLF"]
+	var fb := ""
+	if n >= 1 and n <= CHAPTER_COUNT:
+		fb = fallbacks[n]
+	return _tr("chapter_%d_title" % n, fb)
+
+func _chapter_story(n: int) -> String:
+	var fallbacks := {
+		1: "Your first day on patrol in Kasserine.\nWalk the checkpoints, help the people — and show the Wolves this city has a new officer.",
+		2: "A robbery at the souk stalls!\nStop the thieves, then run down the one who flees.",
+		3: "Night falls over Kasserine and the Wolves come out.\nHold the plaza and the mosque until dawn.",
+		4: "Someone in the crowd knows where The Wolf hides.\nFind the suspicious man and CHECK him — but be careful who you accuse.",
+		5: "It ends tonight. Khaled \"The Wolf\" is waiting at the plaza with his pack.\nTake him down and free Kasserine.",
+	}
+	return _tr("chapter_%d_story" % n, String(fallbacks.get(n, "")))
+
+# --- Chapter intro / cards --------------------------------------------------
+
+func _ensure_chapter_intro() -> void:
+	if is_instance_valid(_chapter_intro):
+		return
+	_chapter_intro = ChapterIntroScript.new()
+	_chapter_intro.name = "ChapterIntro"
+	add_child(_chapter_intro)
+	_chapter_intro.intro_finished.connect(_on_intro_finished)
+	_chapter_intro.next_chapter_pressed.connect(_on_chapter_next)
+	_chapter_intro.retry_chapter_pressed.connect(_on_chapter_retry)
+	_chapter_intro.menu_pressed.connect(_on_chapter_menu)
+
+func _on_intro_finished() -> void:
+	if not _chapter_active:
+		return
+	# Short beat after the card closes, then the first objective starts.
+	_state = "waiting"
+	_delay_timer = 0.5
+
+func _on_chapter_next() -> void:
+	var n := current_chapter + 1
+	if n < 1 or n > CHAPTER_COUNT:
+		_go_to_menu()
+		return
+	start_chapter(n)
+
+func _on_chapter_retry() -> void:
+	if current_chapter >= 1 and current_chapter <= CHAPTER_COUNT:
+		start_chapter(current_chapter)
+
+func _on_chapter_menu() -> void:
+	_go_to_menu()
+
+## Back to the main menu. Campaign progress lives in CampaignManager's
+## save file (written on chapter completion) and is NOT touched here;
+## only the run score/money are reset, like the normal menu path.
+func _go_to_menu() -> void:
+	_chapter_active = false
+	if get_tree() != null:
+		get_tree().paused = false
+		var layer: Node = get_tree().root.get_node_or_null("MobileHUDLayer")
+		if layer != null:
+			layer.queue_free()
+	if is_instance_valid(GameManager):
+		GameManager.reset_game()
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# --- Chapter finish / fail ----------------------------------------------------
+
+func _finish_chapter() -> void:
+	var n := current_chapter
+	_state = "idle"
+	_cleanup_targets()
+	_restore_environment()
+	if is_instance_valid(_panel):
+		_panel.clear()
+		_panel.clear_chapter()
+	var bonus_money := FINAL_BONUS_MONEY if n == CHAPTER_COUNT else CHAPTER_BONUS_MONEY
+	var bonus_score := FINAL_BONUS_SCORE if n == CHAPTER_COUNT else CHAPTER_BONUS_SCORE
+	_grant_reward(bonus_money, bonus_score)
+	var xp := _gm_score() - _chapter_start_score
+	var money := _gm_money() - _chapter_start_money
+	var kills := _gm_kills() - _chapter_start_kills
+	var t := _chapter_elapsed
+	_chapter_active = false
+	chapter_completed.emit(n, xp, money, t)
+	_notify_campaign_completed(n, xp, money, t)
+	_ensure_chapter_intro()
+	if n >= CHAPTER_COUNT:
+		_chapter_intro.show_ending(
+			_tr("ending_title", "KASSERINE IS FREE"),
+			_tr("ending_text", "The Wolf is down. The souk is loud again, the mosque is safe, and Kasserine has its officer.\nThank you for playing, Aymen."),
+			_gm_score(), _gm_kills(), t, xp, money)
+		current_chapter = 0
+	else:
+		_chapter_intro.show_results(n, _chapter_title(n),
+			_gm_score(), _gm_kills(), t, xp, money, false)
+
+func _fail_chapter(reason: String) -> void:
+	var n := current_chapter
+	_state = "idle"
+	_cleanup_targets()
+	_restore_environment()
+	if is_instance_valid(_panel):
+		_panel.clear()
+		_panel.clear_chapter()
+	_chapter_active = false
+	chapter_failed.emit(n, reason)
+	_notify_campaign_failed(n, reason)
+	_ensure_chapter_intro()
+	_chapter_intro.show_fail(n, _chapter_title(n), reason)
+	# current_chapter stays n so RETRY restarts this chapter.
+
+# --- CampaignManager (defensive; the autoload may not exist yet) -----------
+
+func _campaign_manager() -> Node:
+	# NEVER a bare `CampaignManager` reference: it is not registered in
+	# project.godot yet, so the parser would reject this file.
+	if get_tree() == null or get_tree().root == null:
+		return null
+	return get_tree().root.get_node_or_null("CampaignManager")
+
+## Called when a chapter starts (menu or death-RETRY): the menu worker
+## sets CampaignManager.current_chapter via start_chapter(); player.gd
+## sets the static pending_retry_chapter on death-RETRY. The retry
+## flag wins when both are set (same chapter in practice).
+func _check_pending_chapter() -> void:
+	if pending_retry_chapter >= 1 and pending_retry_chapter <= CHAPTER_COUNT:
+		var n := pending_retry_chapter
+		pending_retry_chapter = 0
+		start_chapter(n)
+		return
+	# Menu entry: DEPLOY / CONTINUE / chapter select all set
+	# CampaignManager.current_chapter before changing to intro.tscn.
+	var cm := _campaign_manager()
+	if cm != null:
+		var cur: Variant = cm.get("current_chapter")
+		if cur != null and int(cur) >= 1 and int(cur) <= CHAPTER_COUNT:
+			start_chapter(int(cur))
+
+## Notify CampaignManager a chapter was completed. Canonical API:
+## complete_chapter(chapter, xp_reward, money_reward) — money_reward
+## is 0 on purpose (see the header note): the chapter's dinars were
+## already paid through GameManager.add_money and synced via
+## money_changed, so passing them again would pay them twice.
+func _notify_campaign_completed(chapter: int, xp: int, money: int, time_sec: float) -> void:
+	var cm := _campaign_manager()
+	if cm == null:
+		return
+	if cm.has_method("complete_chapter"):
+		cm.call("complete_chapter", chapter, xp, 0)
+	elif cm.has_method("on_chapter_completed"):
+		cm.call("on_chapter_completed", chapter, xp, money, time_sec)
+
+func _notify_campaign_failed(chapter: int, reason: String) -> void:
+	var cm := _campaign_manager()
+	if cm == null:
+		return
+	if cm.has_method("on_chapter_failed"):
+		cm.call("on_chapter_failed", chapter, reason)
+	elif cm.has_method("chapter_failed"):
+		cm.call("chapter_failed", chapter)
+
+# --- Chapter 3 environment (night + rain) -----------------------------------
+
+func _get_day_night() -> Node:
+	if get_tree() == null:
+		return null
+	var dn: Node = get_tree().get_first_node_in_group("day_night")
+	if dn != null:
+		return dn
+	var scene := get_tree().current_scene
+	if scene != null:
+		return scene.get_node_or_null("DayNight")
+	return null
+
+func _apply_chapter_environment(n: int) -> void:
+	if n != 3:
+		return
+	var dn := _get_day_night()
+	if dn == null:
+		return
+	if _night_saved:
+		return
+	_night_saved = true
+	_saved_time_of_day = float(dn.get("time_of_day"))
+	_saved_time_scale = float(dn.get("time_scale"))
+	_saved_rain_min = float(dn.get("rain_min_gap"))
+	_saved_rain_max = float(dn.get("rain_max_gap"))
+	if dn.has_method("force_night"):
+		dn.call("force_night")
+	# More frequent showers for the night shift (15–40 s gaps instead
+	# of 90–180 s); day_night.gd itself is untouched beyond force_night().
+	dn.set("rain_min_gap", 15.0)
+	dn.set("rain_max_gap", 40.0)
+
+func _restore_environment() -> void:
+	if not _night_saved:
+		return
+	_night_saved = false
+	var dn := _get_day_night()
+	if dn == null:
+		return
+	dn.set("time_scale", _saved_time_scale)
+	if dn.has_method("force_time"):
+		dn.call("force_time", _saved_time_of_day)
+	dn.set("rain_min_gap", _saved_rain_min)
+	dn.set("rain_max_gap", _saved_rain_max)
+
+# --- Chapter 4: the informant -------------------------------------------------
+
+## Pick the informant: a suspicious, non-criminal citizen (the CHECK
+## prompt already exists for him via InteractionManager). If none
+## exists, any citizen is marked suspicious (never a criminal, so
+## CHECK greets instead of making him flee). Citizens spawn over time,
+## so _tick_informant retries until one is found.
+func _pick_informant() -> void:
+	if is_instance_valid(_informant):
+		return
+	if get_tree() == null:
+		return
+	var candidates: Array = []
+	var any_citizen: Node3D = null
+	for c in get_tree().get_nodes_in_group("civilian"):
+		var cn := c as Node3D
+		if not is_instance_valid(cn):
+			continue
+		if any_citizen == null:
+			any_citizen = cn
+		if bool(cn.get("is_suspicious")) and not bool(cn.get("is_criminal")):
+			candidates.append(cn)
+	var chosen: Node3D = null
+	if not candidates.is_empty():
+		chosen = candidates[randi() % candidates.size()]
+	elif is_instance_valid(any_citizen):
+		chosen = any_citizen
+		chosen.set("is_suspicious", true)
+		chosen.set("is_criminal", false)
+	if not is_instance_valid(chosen):
+		return
+	# The informant must offer CHECK, not HELP/GIVE: clear those flags.
+	chosen.set("is_in_need", false)
+	chosen.set("is_poor", false)
+	_informant = chosen
+	if chosen.has_method("say_text"):
+		chosen.call("say_text",
+			_tr("chapter_informant_hint", "Psst... I know where The Wolf hides."), 5.0)
+
+func _tick_informant(delta: float) -> void:
+	if not is_instance_valid(_informant):
+		_informant_pick_t -= delta
+		if _informant_pick_t <= 0.0:
+			_informant_pick_t = 2.0
+			_pick_informant()
+		if is_instance_valid(_panel):
+			_panel.set_distance(-1.0, "")
+			_panel.set_status(_tr("chapter_informant_search", "Searching the crowd..."))
+		return
+	var pos: Vector3 = _informant.global_position
+	# Beacon follows the walking informant (same pattern as HELP).
+	if is_instance_valid(_objective):
+		_objective.global_position = Vector3(pos.x, 0.0, pos.z)
+	var dist := _player_dist_to(pos)
+	if is_instance_valid(_panel):
+		_panel.set_distance(dist, _tr("chapter_informant_label", "The suspicious man"))
+
+## InteractionManager CHECK result. Only the informant completes the
+## chapter; checking any other suspicious citizen just greets them
+## (the interaction manager already shows that) and play continues.
+func _on_check_completed(citizen: Node, _was_criminal: bool) -> void:
+	if not _chapter_active or _state != "active":
+		return
+	if String(_current_data().get("type", "")) != "informant":
+		return
+	if not is_instance_valid(_informant):
+		return
+	if citizen != _informant:
+		return
+	_complete_current()
+
+# --- Chapter 5: the boss -------------------------------------------------------
+
+## Spawn Khaled "The Wolf" (BossEnemy, another worker's script:
+## class_name BossEnemy, extends EnemyAI, signal boss_died).
+## Returns false when the script is absent — the caller then falls
+## back to a tough 5-criminal wave. Never crashes when the boss
+## script is missing or malformed.
+func _spawn_boss(point: Vector3) -> bool:
+	if not FileAccess.file_exists("res://scripts/boss_enemy.gd"):
+		return false
+	var boss_script: Script = load("res://scripts/boss_enemy.gd")
+	if boss_script == null:
+		return false
+	var boss: Variant = boss_script.new()
+	if not (boss is CharacterBody3D):
+		push_warning("MissionDirector: boss_enemy.gd did not produce a CharacterBody3D")
+		return false
+	var body := boss as CharacterBody3D
+	body.name = "BossTheWolf"
+	var col := CollisionShape3D.new()
+	var shape := CapsuleShape3D.new()
+	shape.radius = 0.45
+	shape.height = 1.9
+	col.shape = shape
+	col.position.y = 0.95
+	body.add_child(col)
+	body.position = point + Vector3(0, 1.0, 0)
+	add_child(body)
+	body.add_to_group("zombie")
+	body.set("target", _player)
+	# The lambdas take the emitted argument (boss_died(boss) /
+	# enemy_died(enemy) both emit one) and drop it: Godot 4.2
+	# REJECTS a 0-arg callable connected to a 1-arg signal at emit
+	# time ("Method expected 0 arguments, but called with 1").
+	if body.has_signal("boss_died"):
+		body.connect("boss_died", func(_b) -> void: _on_boss_died())
+	elif body.has_signal("enemy_died"):
+		body.connect("enemy_died", func(_e) -> void: _on_boss_died())
+	else:
+		push_warning("MissionDirector: boss has neither boss_died nor enemy_died signal")
+	_boss = body
+	return true
+
+func _on_boss_died() -> void:
+	if not _chapter_active or _state != "active":
+		return
+	if String(_current_data().get("type", "")) != "boss":
+		return
+	_boss = null
+	_complete_current()
+
+func _tick_boss() -> void:
+	if _boss_fallback:
+		# No boss script: the fallback wave completes like RESPOND.
+		_tick_respond()
+		return
+	if not is_instance_valid(_boss):
+		_fail_current("The Wolf escaped")
+		return
+	var dist := _player_dist_to(_boss.global_position)
+	if is_instance_valid(_panel):
+		_panel.set_distance(dist, _tr("boss_name", "Khaled \"The Wolf\""))
+		if _boss.get("current_health") != null and _boss.get("max_health") != null:
+			_panel.set_status("Boss HP: %d / %d" % [
+				int(maxf(0.0, float(_boss.get("current_health")))),
+				int(float(_boss.get("max_health")))])
+
+# --- GameManager stat helpers (guarded; the autoload always exists) ----------
+
+func _gm_score() -> int:
+	return int(GameManager.score) if is_instance_valid(GameManager) else 0
+
+func _gm_kills() -> int:
+	return int(GameManager.kills) if is_instance_valid(GameManager) else 0
+
+func _gm_money() -> int:
+	return int(GameManager.money) if is_instance_valid(GameManager) else 0
 
 # --- Translation ------------------------------------------------------------
 # Cached LanguageManager instance (RefCounted, no _init side effects).

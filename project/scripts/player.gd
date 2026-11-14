@@ -399,6 +399,16 @@ func _show_death_overlay() -> void:
 	mobile_hud.show_death(final_score, final_kills, wave)
 
 func _on_retry() -> void:
+	# v0.7: dying mid-chapter restarts THAT chapter (not the campaign).
+	# The director's static flag survives the scene reload; the fresh
+	# director picks it up in _ready and re-starts the chapter with
+	# its objectives reset. Free play: current_chapter is 0, the flag
+	# stays 0, and this is the plain v0.5 reload. MENU (death_menu /
+	# _on_menu) is unchanged — unlocked progress lives in
+	# CampaignManager's save file, which nothing here wipes.
+	var director: Node = get_parent().get_node_or_null("MissionDirector")
+	if director != null and int(director.get("current_chapter")) > 0:
+		PhantomMissionDirector.pending_retry_chapter = int(director.get("current_chapter"))
 	# Reload the game cleanly. The root HUD layer is freed here (and
 	# again in _exit_tree); the new Player rebuilds a fresh one, so no
 	# stacked HUDs — the v0.3 fix still holds.

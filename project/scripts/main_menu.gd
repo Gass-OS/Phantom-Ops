@@ -7,6 +7,17 @@ extends Node3D
 var _sound: SoundManager
 var _camera: Camera3D
 var _angle := 0.0
+# v0.7: campaign menu — CONTINUE (highest unlocked chapter),
+# CHAPTER SELECT (5 chapters, locked ones greyed), rank + XP under
+# the hero. DEPLOY starts CampaignManager.current_chapter: the
+# chapter the player last picked (or the highest unlocked when
+# fresh), so replaying an earlier chapter from the list and then
+# hitting DEPLOY replays it; CONTINUE always jumps to the furthest
+# unlocked chapter. Rank never gates a chapter (see
+# campaign_manager.gd).
+func _cm() -> Node:
+	return get_node_or_null("/root/CampaignManager")
+
 # v0.6: adhan toggle. A local AdhanManager instance (not in the scene
 # tree as a player) just to own the persisted ON/OFF setting — the
 # in-game AdhanManager loads the same settings.cfg value.
@@ -32,6 +43,9 @@ func _ready() -> void:
 	if city == null or city.get_child_count() < 50:
 		$CanvasLayer/UI/BG.visible = true
 	$CanvasLayer/UI/Play.pressed.connect(_on_deploy_pressed)
+	$CanvasLayer/UI/Continue.pressed.connect(_on_continue_pressed)
+	$CanvasLayer/UI/ChapterSelect.pressed.connect(_on_chapter_select_pressed)
+	$CanvasLayer/UI/ChapterPanel/ChapterClose.pressed.connect(_on_chapter_close_pressed)
 	$CanvasLayer/UI/HowTo.pressed.connect(_on_howto_pressed)
 	$CanvasLayer/UI/Sound.pressed.connect(_on_sound_pressed)
 	$CanvasLayer/UI/HowToPanel/Close.pressed.connect(_on_close_pressed)
@@ -84,9 +98,18 @@ func _apply_language() -> void:
 	var lang_fr := ui.get_node("LangFR") as Button
 	var lang_en := ui.get_node("LangEN") as Button
 	var lang_ar := ui.get_node("LangAR") as Button
+	var continue_b := ui.get_node("Continue") as Button
+	var chapter_select := ui.get_node("ChapterSelect") as Button
+	var rank_label := ui.get_node("RankLabel") as Label
+	var chapter_title := ui.get_node("ChapterPanel/ChapterTitle") as Label
+	var chapter_close := ui.get_node("ChapterPanel/ChapterClose") as Button
 	title.text = LanguageManager.translate("menu_title")
 	subtitle.text = LanguageManager.translate("menu_subtitle")
 	play.text = "▶  " + LanguageManager.translate("menu_deploy")
+	continue_b.text = "▶  " + LanguageManager.translate("continue_game")
+	chapter_select.text = LanguageManager.translate("chapter_select")
+	chapter_title.text = LanguageManager.translate("chapter_select")
+	chapter_close.text = LanguageManager.translate("menu_close")
 	howto.text = LanguageManager.translate("menu_how_to_play")
 	controls.text = LanguageManager.translate("hud_controls")
 	lang_label.text = LanguageManager.translate("menu_language")
@@ -95,11 +118,92 @@ func _apply_language() -> void:
 	lang_fr.text = LanguageManager.translate("language_fr")
 	lang_en.text = LanguageManager.translate("language_en")
 	lang_ar.text = LanguageManager.translate("language_ar")
-	for c in [title, subtitle, play, howto, sound, adhan, controls, lang_label, howto_text, close, lang_fr, lang_en, lang_ar]:
+	_update_rank_label(rank_label)
+	for c in [title, subtitle, play, continue_b, chapter_select, rank_label, chapter_title, chapter_close, howto, sound, adhan, controls, lang_label, howto_text, close, lang_fr, lang_en, lang_ar]:
 		LanguageManager.apply_font_to(c)
 	_update_sound_button()
 	_update_adhan_button()
 	_update_lang_buttons()
+	_build_chapter_list()
+
+
+## Rank + XP under the hero. Falls back to Officer / 0 XP when the
+## campaign autoload is absent.
+func _update_rank_label(rank_label: Label) -> void:
+	var cm := _cm()
+	var rank_name := LanguageManager.translate("rank_officer")
+	var xp := 0
+	if cm != null:
+		rank_name = String(cm.call("rank_name", int(cm.call("get_rank"))))
+		xp = int(cm.call("get_xp"))
+	rank_label.text = "%s  •  XP %d" % [rank_name, xp]
+
+
+## Rebuild the chapter list (translated titles, lock state). Called
+## on every language change so the panel is always in sync.
+func _build_chapter_list() -> void:
+	var list := $CanvasLayer/UI/ChapterPanel/ChapterList as VBoxContainer
+	for child in list.get_children():
+		child.free()  # Immediate: rebuilds happen per language switch.
+	var cm := _cm()
+	for n in range(1, 6):
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(760, 78)
+		b.add_theme_font_size_override("font_size", 26)
+		var title := LanguageManager.t("chapter_%d_title" % n)
+		var unlocked := true
+		if cm != null:
+			unlocked = bool(cm.call("is_unlocked", n))
+		if unlocked:
+			b.text = "%d.  %s" % [n, title]
+			b.pressed.connect(_on_chapter_pressed.bind(n))
+		else:
+			b.text = "%d.  %s  —  %s" % [n, title, LanguageManager.translate("chapter_locked")]
+			b.disabled = true
+			b.add_theme_color_override("font_disabled_color", Color(0.6, 0.6, 0.6, 0.8))
+		LanguageManager.apply_font_to(b)
+		list.add_child(b)
+	# Ending line once the whole campaign (all 5 chapters) is done.
+	var ending := $CanvasLayer/UI/ChapterPanel/EndingLabel as Label
+	var done := false
+	if cm != null:
+		done = bool(cm.call("campaign_complete"))
+	ending.visible = done
+	if done:
+		ending.text = "%s\n%s" % [LanguageManager.translate("ending_title"), LanguageManager.translate("ending_text")]
+		LanguageManager.apply_font_to(ending)
+
+
+func _on_continue_pressed() -> void:
+	if _sound != null:
+		_sound.play_click()
+	var cm := _cm()
+	if cm != null:
+		cm.call("start_chapter", int(cm.call("highest_unlocked")))
+	get_tree().change_scene_to_file("res://scenes/intro.tscn")
+
+
+func _on_chapter_select_pressed() -> void:
+	if _sound != null:
+		_sound.play_click()
+	_build_chapter_list()
+	$CanvasLayer/UI/ChapterPanel.visible = true
+
+
+func _on_chapter_close_pressed() -> void:
+	if _sound != null:
+		_sound.play_click()
+	$CanvasLayer/UI/ChapterPanel.visible = false
+
+
+func _on_chapter_pressed(chapter: int) -> void:
+	if _sound != null:
+		_sound.play_click()
+	var cm := _cm()
+	if cm != null and not bool(cm.call("start_chapter", chapter)):
+		return
+	$CanvasLayer/UI/ChapterPanel.visible = false
+	get_tree().change_scene_to_file("res://scenes/intro.tscn")
 
 ## Highlight the active language button in gold.
 func _update_lang_buttons() -> void:
@@ -119,6 +223,16 @@ func _on_language_pressed(code: String) -> void:
 func _on_deploy_pressed() -> void:
 	if _sound != null:
 		_sound.play_click()
+	# v0.7: DEPLOY starts the campaign's current chapter — the one
+	# the player last picked in CHAPTER SELECT, or the highest
+	# unlocked chapter when fresh. (CONTINUE always jumps to the
+	# highest unlocked chapter instead.)
+	var cm := _cm()
+	if cm != null:
+		var chapter := int(cm.get("current_chapter"))
+		if not bool(cm.call("is_unlocked", chapter)):
+			chapter = int(cm.call("highest_unlocked"))
+		cm.call("start_chapter", chapter)
 	get_tree().change_scene_to_file("res://scenes/intro.tscn")
 
 func _on_howto_pressed() -> void:

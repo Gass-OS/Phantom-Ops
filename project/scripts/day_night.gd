@@ -148,6 +148,20 @@ func force_time(t: float) -> void:
 	_apply_time()
 
 
+func force_night() -> void:
+	"""v0.7 — jump the clock to midnight (00:00) and FREEZE it there
+	(time_scale = 0.0) so the chapter stays night. Used by chapter 3
+	(NIGHT SHIFT). The dusk flag is pre-set so the jump does NOT
+	re-emit dusk_reached (no second adhan). Restore with
+	force_time(saved_time) + time_scale = saved_scale — the caller
+	(MissionDirector) owns saving/restoring those values."""
+	time_scale = 0.0
+	_dusk_emitted_this_cycle = true
+	_prev_time = time_of_day
+	time_of_day = 0.75
+	_apply_time()
+
+
 func force_rain(duration: float = -1.0) -> void:
 	"""Start a shower now (testing). Duration 30–60 s if not given."""
 	if is_raining:

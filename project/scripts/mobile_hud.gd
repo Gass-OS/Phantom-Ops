@@ -45,6 +45,10 @@ var reloading := false
 var score := 0
 var kills := 0
 var wave := 1
+# v0.7: rank chip text. Read live from CampaignManager when it is
+# present (autoload); this local value is the fallback for scenes
+# run without the campaign autoload.
+var rank_text := ""
 var compass_yaw := 0.0
 var _hitmarker_until := 0
 
@@ -110,6 +114,22 @@ func set_score(new_score: int, new_kills: int) -> void:
 func set_wave(new_wave: int) -> void:
 	wave = new_wave
 	queue_redraw()
+
+# v0.7: rank chip. set_rank_text overrides the CampaignManager
+# value (used by tests / other workers); refresh_rank just redraws
+# after a rank-up, the chip itself reads the live rank in _draw.
+func set_rank_text(text: String) -> void:
+	rank_text = text
+	queue_redraw()
+
+func refresh_rank() -> void:
+	queue_redraw()
+
+func _rank_chip_text() -> String:
+	var cm := get_node_or_null("/root/CampaignManager")
+	if cm != null and cm.has_method("rank_short") and cm.has_method("get_rank"):
+		return String(cm.call("rank_short", int(cm.call("get_rank"))))
+	return rank_text
 
 func set_compass(yaw: float) -> void:
 	if absf(yaw - compass_yaw) > 0.02:
@@ -191,6 +211,14 @@ func _draw() -> void:
 	var hp_col := Color(0.25, 0.75, 0.30) if hp_ratio > 0.5 else (Color(0.9, 0.7, 0.2) if hp_ratio > 0.25 else Color(0.85, 0.2, 0.15))
 	draw_rect(Rect2(20, 74, 256 * hp_ratio, 20), hp_col, true)
 	draw_string(f, Vector2(26, 92), "%s %d" % [LanguageManager.translate("hud_hp"), int(health)], HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * sc), Color.WHITE)
+	# v0.7: rank chip under the HP bar (next to the title chip).
+	# Short language-neutral code ("SGT") so it stays compact in
+	# FR / EN / AR. Width follows the text.
+	var rank_chip := _rank_chip_text()
+	if rank_chip != "":
+		var rank_size := f.get_string_size(rank_chip, HORIZONTAL_ALIGNMENT_LEFT, -1, int(18.0 * sc))
+		draw_rect(Rect2(18, 104, rank_size.x + 24, 30), Color(0.02, 0.03, 0.04, 0.55), true)
+		draw_string(f, Vector2(30, 126), rank_chip, HORIZONTAL_ALIGNMENT_LEFT, -1, int(18.0 * sc), Color(1, 0.85, 0.5))
 	# Score / kills / wave, top centre.
 	var status := "%s %d    %s %d    %s %d" % [LanguageManager.translate("hud_score"), score, LanguageManager.translate("hud_kills"), kills, LanguageManager.translate("hud_wave"), wave]
 	draw_rect(Rect2(w / 2 - 230, 18, 460, 42), Color(0.02, 0.03, 0.04, 0.55), true)
