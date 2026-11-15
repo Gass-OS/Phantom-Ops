@@ -8,7 +8,7 @@
 
 [![Godot 4.2](https://img.shields.io/badge/Godot-4.2-478CBF?style=for-the-badge&logo=godot-engine&logoColor=white)](https://godotengine.org)
 [![Android](https://img.shields.io/badge/Android-arm64-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Gass-OS/Phantom-Ops/actions)
-[![Version 0.7.0](https://img.shields.io/badge/version-0.7.0-blue?style=for-the-badge)](https://github.com/Gass-OS/Phantom-Ops)
+[![Version 0.8.0](https://img.shields.io/badge/version-0.8.0-blue?style=for-the-badge)](https://github.com/Gass-OS/Phantom-Ops)
 [![Build](https://github.com/Gass-OS/Phantom-Ops/actions/workflows/build-android.yml/badge.svg)](https://github.com/Gass-OS/Phantom-Ops/actions)
 
 **You are a police officer in Kasserine. Patrol the city, protect its people, take on missions — and bring down the gang that calls itself the Wolves of Kasserine.**
@@ -26,14 +26,41 @@ One thing is not procedural: **the hero is Aymen's own 3D scan** (`project/asset
 - 🗺️ **A living Kasserine** — procedural city, mosque with teal dome and minarets, medina domes, market stalls, palms, fountain, benches, bus stops
 - 👮 **You are the police** — missions, ranks, money in Tunisian dinars (DT), a drivable police car with siren and lights
 - 🕌 **Respectful detail** — real adhan recording at dusk, Tunisian citizens in jebba and hijab, greetings in Tunisian Arabic, French and English
-- 🌙 **Day & night** — 4-minute cycle, rain, thunder and lightning, lamps and lit windows at night
+- 🌙 **Day & night** — sun cycle, rain, thunder and lightning, lamps and lit windows at night
 - 🎯 **Story campaign** — 5 chapters against a gang, with a boss fight, ranks and saves
+- 🔫 **Arsenal & heat** — 5 weapons with real ammo, and a wanted system that answers how loud you play
 
 ---
 
-## 🆕 Current version — v0.7.0 "Story Campaign"
+## 🆕 Current version — v0.8.0 "Weapons + Wanted"
 
-### 📚 The campaign: The Wolves of Kasserine
+### 🔫 Five weapons
+
+| Weapon | Price | Unlock | Notes |
+|:---|:---:|:---:|---|
+| **Pistol** | starting | — | Infinite reserve ammo |
+| **Rifle** | default | — | Your standard issue |
+| **SMG** | 1500 DT | Chapter 2 (free) | Fast fire, close range |
+| **Shotgun** | 2500 DT | Chapter 4 (free) | Needs Sergeant rank |
+| **Sniper** | 5000 DT | Lieutenant rank | Scope zoom, long range |
+
+Each weapon has its own damage, fire rate, magazine, reload time, spread, viewmodel and sound. Buy and equip them in the **Armoury** (main menu or pause), with full stats in French, English and Arabic.
+
+### 🎒 Ammo
+
+- **Magazine + reserve** per weapon, shown on the HUD with a big **RELOAD** button and auto-reload
+- Defeated enemies drop **ammo boxes** — pick them up to restock
+
+### 🔥 Wanted / heat — 5 stars on the HUD
+
+- Kills and wild firing **raise** your heat; laying low and finishing missions **lower** it
+- The **mosque and your police car are safe zones** — heat doesn't rise there
+- Higher heat sends tougher enemies after you: gunmen, shotgun elites — and at **level 5, a 4-man hit squad** with a warning banner and a **500 DT bounty** for surviving them
+- **Safety nets** — failing a chapter restores your exact heat before it, so a hard chapter can never soft-lock you; your heat is halved when you reload a save; a purchase is saved the instant you buy it
+
+---
+
+## 📚 The campaign: The Wolves of Kasserine
 
 | Chapter | Title | What happens |
 |:---:|---|---|
@@ -65,15 +92,10 @@ One thing is not procedural: **the hero is Aymen's own 3D scan** (`project/asset
 | Left joystick | Move |
 | Drag on screen | Look around |
 | **FIRE** | Shoot (hold to keep firing) |
+| **RELOAD** | Reload the current weapon |
 | **JUMP** / **RUN** | Jump / sprint |
 | **Interact** | Talk, help, check citizens — enter the police car |
-| **Pause** | Pause menu, sound & voices, quit to menu |
-
----
-
-## 🔜 Coming next — v0.8 "Weapons + Wanted" (in progress)
-
-5 weapons (Pistol, Rifle, SMG, Shotgun, Sniper with scope zoom), an armoury, real ammo with reloads and pickups, and a 5-level wanted/heat system that sends tougher enemies after you. Not shipped yet — v0.7 is the current release.
+| **Pause** | Pause menu, armoury, sound & voices, quit to menu |
 
 ---
 
@@ -101,7 +123,8 @@ Pushing to `main` triggers the same build in CI — no local Android SDK needed.
 ```
 project/
 ├── scenes/        # main_menu, intro (drone cinematic), main_game
-├── scripts/       # city generator, campaign, missions, citizens, traffic, AI
+├── scripts/       # city generator, campaign, missions, citizens, traffic, AI,
+│                  # weapons, armoury, ammo, wanted/heat
 ├── assets/
 │   ├── characters/  # Aymen's 3D scan — aymen_pbr.glb (hero) + LowPoly fallback
 │   └── audio/       # adhan.ogg (real recording, CC0)
@@ -119,7 +142,8 @@ Rendering is deliberately Mobile-safe: colour background + colour ambient, Filmi
 
 | Version | Highlights |
 |:---:|---|
-| **0.7.0** | Story campaign, boss Khaled, ranks, saves |
+| **0.8.0** | Weapons + Wanted — 5 weapons, armoury, ammo/reload, 5-level heat system |
+| 0.7.0 | Story campaign, boss Khaled, ranks, saves |
 | 0.6.0 | Police missions, FR/EN/AR, adhan, day/night + rain, police car, 60 MB |
 | 0.5.0 | Death flow fixed, GTA IV-style dusk look |
 | 0.4.0 | Drone intro, live 3D menu, mosque, citizens, voices, icon |
