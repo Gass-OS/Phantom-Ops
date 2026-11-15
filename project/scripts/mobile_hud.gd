@@ -14,6 +14,11 @@ signal fire_held_changed(value: bool)
 signal pause_pressed
 signal resume_pressed
 signal menu_pressed
+# v0.8: emitted when the ARMOURY circle in the pause overlay is
+# tapped. The game stays paused — the coordinator opens the
+# ArmouryPanel over the pause overlay, and closing the panel returns
+# to the pause menu (it must NOT resume the game).
+signal armoury_requested
 # v0.5: death flow. RETRY reloads the game, death_menu_pressed goes
 # to the main menu. Before v0.5 nothing listened to player_died, so
 # death left the player frozen with no screen and no way out.
@@ -69,13 +74,18 @@ func _layout(w: float, h: float) -> Dictionary:
 		"run_r": 56.0 * s,
 		"pause_c": Vector2(w - 60.0 * s, 60.0 * s),
 		"pause_r": 40.0 * s,
-		"resume_c": Vector2(w * 0.5, h * 0.47),
+		"resume_c": Vector2(w * 0.5, h * 0.42),
 		"resume_r": 58.0 * s,
-		"menu_c": Vector2(w * 0.5, h * 0.60),
+		"menu_c": Vector2(w * 0.5, h * 0.54),
 		"menu_r": 58.0 * s,
-		"sound_c": Vector2(w * 0.5, h * 0.73),
+		# v0.8: ARMOURY circle in the pause overlay. The five pause
+		# circles are re-spaced evenly (0.42/0.54/0.66/0.78/0.90) so
+		# none overlap: 0.12h gaps vs 116px diameter at s=1.
+		"armoury_c": Vector2(w * 0.5, h * 0.66),
+		"armoury_r": 58.0 * s,
+		"sound_c": Vector2(w * 0.5, h * 0.78),
 		"sound_r": 58.0 * s,
-		"voices_c": Vector2(w * 0.5, h * 0.86),
+		"voices_c": Vector2(w * 0.5, h * 0.90),
 		"voices_r": 58.0 * s,
 		"retry_c": Vector2(w * 0.5, h * 0.58),
 		"retry_r": 58.0 * s,
@@ -255,6 +265,12 @@ func _draw() -> void:
 		var menu_r: float = lay["menu_r"]
 		_button(menu_c, menu_r, Color(0.45, 0.16, 0.13, 0.98))
 		draw_string(f, Vector2(menu_c.x - 110.0 * sc, menu_c.y + 6.0 * sc), LanguageManager.translate("pause_menu"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(20.0 * sc), Color.WHITE)
+		# v0.8: ARMOURY entry (brass/gold circle, same size as the
+		# other pause circles). Tap emits armoury_requested.
+		var armoury_c: Vector2 = lay["armoury_c"]
+		var armoury_r: float = lay["armoury_r"]
+		_button(armoury_c, armoury_r, Color(0.45, 0.35, 0.10, 0.98))
+		draw_string(f, Vector2(armoury_c.x - 110.0 * sc, armoury_c.y + 6.0 * sc), LanguageManager.translate("armoury_title"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * sc, int(20.0 * sc), Color.WHITE)
 		var sound_c: Vector2 = lay["sound_c"]
 		var sound_r: float = lay["sound_r"]
 		_button(sound_c, sound_r, Color(0.16, 0.30, 0.45, 0.98))
@@ -345,6 +361,8 @@ func _start(id: int, p: Vector2, w: float, h: float) -> void:
 			resume_pressed.emit()
 		elif p.distance_to(lay["menu_c"]) <= float(lay["menu_r"]) + 12.0:
 			menu_pressed.emit()
+		elif p.distance_to(lay["armoury_c"]) <= float(lay["armoury_r"]) + 12.0:
+			armoury_requested.emit()
 		elif p.distance_to(lay["sound_c"]) <= float(lay["sound_r"]) + 12.0:
 			sound_on = not sound_on
 			sound_toggled.emit(sound_on)

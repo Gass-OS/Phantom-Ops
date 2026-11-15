@@ -31,6 +31,16 @@ var _muzzle_flash: MeshInstance3D
 var _muzzle_light: OmniLight3D
 var _sound: SoundManager
 var _firing := false
+# v0.8: WeaponManager owns the arsenal when present (created in
+# _ready). When it is absent the legacy rifle path below runs
+# exactly as before — the player must still shoot with no manager.
+var _weapon_manager: WeaponManager = null
+var _weapon_hud: WeaponHud = null
+# v0.8 (coordinator integration): wanted system + HUD clusters + armoury.
+var _wanted_manager = null
+var _heat_hud = null
+var _armoury_panel = null
+var _scoped := false
 var _step_timer := 0.0
 var _greet_timer := 2.0
 var _pending_death := false
@@ -51,6 +61,9 @@ func _ready() -> void:
 	_tracer_mat.emission_energy_multiplier = 2.0
 	_tracer_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_create_viewmodel()
+	_create_weapon_manager()
+	_create_wanted_manager()
+	_wire_refills()
 	# v0.5: death was a dead end — player_died was emitted but nothing
 	# listened, so the player froze with no screen and no way out.
 	player_died.connect(_on_player_died)
@@ -89,6 +102,32 @@ func _create_mobile_hud() -> void:
 	if mobile_hud.has_signal("death_menu_pressed"):
 		mobile_hud.death_menu_pressed.connect(_on_menu)
 	mobile_hud.sprint_changed.connect(_on_sprint)
+	if mobile_hud.has_signal("armoury_requested"):
+		mobile_hud.armoury_requested.connect(_open_armoury)
+	# v0.8 (coordinator integration): weapon + heat HUD clusters and
+	# the armoury panel live in the same HUD layer, ABOVE the
+	# MobileHUD child so their buttons stay tappable.
+	var layer_ref := layer
+	if _weapon_manager != null:
+		var wh := WeaponHud.new()
+		wh.name = "WeaponHud"
+		layer_ref.add_child(wh)
+		wh.setup(_weapon_manager)
+		set_weapon_hud(wh)
+		wh.reload_pressed.connect(_start_reload)
+		wh.cycle_pressed.connect(_on_weapon_cycle_pressed)
+		wh.aim_toggled.connect(set_scoped)
+	if _wanted_manager != null:
+		var hh := HeatHud.new()
+		hh.name = "HeatHud"
+		layer_ref.add_child(hh)
+		hh.setup(_wanted_manager)
+		_heat_hud = hh
+	var ap := ArmouryPanel.new()
+	ap.name = "ArmouryPanel"
+	ap.visible = false
+	layer_ref.add_child(ap)
+	_armoury_panel = ap
 	if _pending_death:
 		_pending_death = false
 		_show_death_overlay()
@@ -210,7 +249,7 @@ func _process(delta: float) -> void:
 	if _cooldown_timer > 0.0:
 		_cooldown_timer -= delta
 	if _firing and not is_paused and not is_dead:
-		_on_mobile_fire()
+		_on_fire_held_tick()
 	# v0.4: greet a nearby civilian (best-effort TTS, throttled inside
 	# SoundManager.greet(); silent when TTS is unavailable).
 	_greet_timer -= delta
@@ -222,7 +261,8 @@ func _process(delta: float) -> void:
 		if _flash_timer <= 0.0:
 			_muzzle_flash.visible = false
 			_muzzle_light.light_energy = 0.0
-	if reloading:
+	# v0.8: the reload timer lives in WeaponManager when present.
+	if reloading and _weapon_manager == null:
 		_reload_timer -= delta
 		if _reload_timer <= 0.0:
 			reloading = false
@@ -262,6 +302,236 @@ func _on_mobile_jump() -> void:
 	if is_on_floor():
 		velocity.y = jump_velocity
 func _on_mobile_fire() -> void:
+	# v0.8: press event — fires every weapon (auto AND semi).
+	# Hold-ticks go through _on_fire_held_tick() instead, which
+	# gates semi weapons. Without a WeaponManager the legacy
+	# rifle path runs exactly as before.
+	if _weapon_manager != null:
+		_fire_with_weapon()
+		return
+	_fire_legacy()
+
+func _on_fire_held_tick() -> void:
+	# Hold-to-fire: auto weapons keep firing while held; semi
+	# weapons (pistol / shotgun / sniper) fire on press only.
+	if _weapon_manager != null:
+		if not bool(_weapon_manager.get_current_stats().get("auto", true)):
+			return
+		_fire_with_weapon()
+		return
+	_fire_legacy()
+
+# v0.8: fire through the WeaponManager. try_fire() owns the mag,
+# cooldown and sound; this function does the raycast(s) — one ray
+# per pellet (shotgun = 8) — using the stats it returns, plus
+# tracer / impact puff / hitmarker, exactly like the legacy path.
+func _fire_with_weapon() -> void:
+	if is_paused or is_dead or is_driving:
+		return
+	var wm := _weapon_manager
+	if wm.is_reloading():
+		return
+	if not wm.try_fire():
+		if wm.get_mag() <= 0 and not wm.is_reloading():
+			_start_reload()
+		return
+	_flash_timer = 0.06
+	_muzzle_flash.visible = true
+	_muzzle_flash.scale = Vector3(randf_range(0.8, 1.3), randf_range(0.8, 1.3), randf_range(0.8, 1.3))
+	_muzzle_light.light_energy = 2.0
+	_recoil = 1.0
+	camera.rotation.x = clampf(camera.rotation.x + 0.012, deg_to_rad(-80), deg_to_rad(80))
+	var stats := wm.get_current_stats()
+	var pellets := int(stats.get("pellets", 1))
+	var spread_rad := deg_to_rad(float(stats.get("spread_deg", 1.0)))
+	var range_m := float(stats.get("range", 80.0))
+	var damage := float(stats.get("damage", 34.0))
+	var any_hit := false
+	var hit_group := ""
+	for p in range(pellets):
+		var dir := -camera.global_transform.basis.z
+		if spread_rad > 0.0:
+			dir = (dir
+				+ camera.global_transform.basis.x * randf_range(-spread_rad, spread_rad)
+				+ camera.global_transform.basis.y * randf_range(-spread_rad, spread_rad)).normalized()
+		var target := camera.global_position + dir * range_m
+		var q := PhysicsRayQueryParameters3D.create(camera.global_position, target)
+		q.exclude = [self]
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		var end_point := target
+		# v0.4: civilians are NEVER targets (same rule as legacy).
+		var hit_civilian := false
+		if not hit.is_empty():
+			var collider := hit.collider as Node
+			if collider != null and collider.is_in_group("civilian"):
+				hit_civilian = true
+			else:
+				end_point = hit.position
+				_spawn_impact_puff(end_point)
+		_spawn_tracer(camera.global_position - camera.global_transform.basis.z * 0.8, end_point)
+		if not hit_civilian and not hit.is_empty() and hit.collider.has_method("take_damage"):
+			hit.collider.take_damage(damage)
+			any_hit = true
+			hit_group = _group_of(hit.collider)
+			if _sound != null:
+				_sound.play_hit()
+			if mobile_hud != null and mobile_hud.has_method("show_hitmarker"):
+				mobile_hud.show_hitmarker()
+			if _weapon_hud != null:
+				_weapon_hud.show_hitmarker()
+	wm.report_shot(any_hit, hit_group)
+	# v0.8 (coordinator integration): a shot that hit nothing counts
+	# as wild fire — the WantedManager only adds heat when a civilian
+	# is actually nearby, so this call is safe anywhere.
+	if not any_hit and _wanted_manager != null and _wanted_manager.has_method("register_missed_shot"):
+		_wanted_manager.register_missed_shot()
+	if wm.get_mag() <= 0:
+		_start_reload()
+	else:
+		_update_hud_all()
+
+func _group_of(node: Node) -> String:
+	for g in ["zombie", "civilian", "boss", "player"]:
+		if node.is_in_group(g):
+			return g
+	return ""
+
+# v0.8: WeaponManager wiring. The coordinator hands the WeaponHud
+# in via set_weapon_hud(); the ArmouryPanel is wired by the
+# coordinator (it only needs the manager, not the Player).
+func _create_weapon_manager() -> void:
+	_weapon_manager = WeaponManager.new()
+	_weapon_manager.name = "WeaponManager"
+	add_child(_weapon_manager)
+	_weapon_manager.setup(self)
+	_weapon_manager.weapon_changed.connect(_on_weapon_changed)
+	_weapon_manager.ammo_changed.connect(_on_weapon_ammo_changed)
+	_weapon_manager.reload_started.connect(_on_weapon_reload_started)
+	_weapon_manager.reload_finished.connect(_on_weapon_reload_finished)
+	_weapon_manager.scoped_changed.connect(_on_weapon_scoped_changed)
+
+func get_weapon_manager() -> WeaponManager:
+	return _weapon_manager
+
+# v0.8 (coordinator integration): create the WantedManager as a
+# child of the Player (same pattern as the WeaponManager). It finds
+# the player/spawner/director itself in its deferred _late_ready.
+func _create_wanted_manager() -> void:
+	var script: Script = load("res://scripts/wanted_manager.gd")
+	if script == null:
+		return
+	_wanted_manager = script.new()
+	_wanted_manager.name = "WantedManager"
+	add_child(_wanted_manager)
+	if _wanted_manager.has_signal("play_sting"):
+		_wanted_manager.play_sting.connect(_on_wanted_sting)
+
+
+func _on_wanted_sting() -> void:
+	if _sound != null and _sound.has_method("play_roar"):
+		_sound.play_roar()
+
+
+# v0.8 (coordinator integration): mission/chapter completion refills
+# all weapon reserves (the "resupply" rule). Both signals are
+# null-guarded so free play without a director still works.
+func _wire_refills() -> void:
+	var cm := get_node_or_null("/root/CampaignManager")
+	if cm != null and cm.has_signal("chapter_completed"):
+		if not cm.is_connected("chapter_completed", _on_chapter_completed_refill):
+			cm.connect("chapter_completed", _on_chapter_completed_refill)
+	var director := get_parent().get_node_or_null("MissionDirector")
+	if director != null and director.has_signal("mission_completed"):
+		if not director.is_connected("mission_completed", _on_mission_completed_refill):
+			director.connect("mission_completed", _on_mission_completed_refill)
+
+
+func _on_mission_completed_refill(_mission_id: Variant = null) -> void:
+	_refill_reserves()
+
+
+func _on_chapter_completed_refill(_chapter: int = 0, _xp: int = 0, _money: int = 0) -> void:
+	_refill_reserves()
+
+
+func _refill_reserves() -> void:
+	if _weapon_manager != null and _weapon_manager.has_method("refill_all_reserves"):
+		_weapon_manager.refill_all_reserves()
+
+
+# v0.8 (coordinator integration): open the armoury over the game.
+# From the pause menu the game stays paused (is_paused untouched);
+# closing the panel returns to the pause overlay, never resumes.
+func _open_armoury() -> void:
+	if _armoury_panel == null or _weapon_manager == null:
+		return
+	_armoury_panel.open(_weapon_manager)
+
+
+func _on_weapon_cycle_pressed() -> void:
+	if _weapon_manager != null:
+		_weapon_manager.cycle_weapon()
+
+func set_weapon_hud(hud: WeaponHud) -> void:
+	_weapon_hud = hud
+
+func _on_weapon_changed(id: String) -> void:
+	_swap_viewmodel(id)
+	_update_hud_all()
+
+func _on_weapon_ammo_changed(mag: int, _reserve: int) -> void:
+	ammo = mag
+	_update_hud_all()
+
+func _on_weapon_reload_started() -> void:
+	reloading = true
+	_update_hud_all()
+
+func _on_weapon_reload_finished() -> void:
+	reloading = false
+	_update_hud_all()
+
+func _on_weapon_scoped_changed(scoped: bool) -> void:
+	_scoped = scoped
+	camera.fov = 30.0 if scoped else 75.0
+	if _weapon_hud != null:
+		_weapon_hud.set_scoped_visual(scoped)
+
+## Aim toggle for the sniper (called by the coordinator's AIM
+## button). Forwards to WeaponManager.set_scoped; FOV + scope
+## visuals follow via scoped_changed. No-op for other weapons.
+func set_scoped(v: bool) -> void:
+	if _weapon_manager == null:
+		return
+	_weapon_manager.set_scoped(v)
+	camera.fov = 30.0 if _weapon_manager.is_scoped() else 75.0
+
+## Swap the procedural viewmodel, keeping the muzzle flash + light
+## (re-parented onto the new viewmodel at its muzzle offset).
+func _swap_viewmodel(id: String) -> void:
+	if _viewmodel == null or _weapon_manager == null:
+		return
+	var old := _viewmodel
+	var flash := _muzzle_flash
+	var light := _muzzle_light
+	if flash != null:
+		old.remove_child(flash)
+	if light != null:
+		old.remove_child(light)
+	var fresh := _weapon_manager.build_viewmodel(id)
+	fresh.position = Vector3(0.28, -0.24, -0.5)
+	camera.add_child(fresh)
+	_viewmodel = fresh
+	var muzzle := _weapon_manager.get_muzzle_offset(id)
+	if flash != null:
+		flash.position = muzzle
+		fresh.add_child(flash)
+	if light != null:
+		light.position = muzzle
+		fresh.add_child(light)
+	old.queue_free()
+
+func _fire_legacy() -> void:
 	if is_paused or is_dead or is_driving or reloading:
 		return
 	if _cooldown_timer > 0.0:
@@ -341,6 +611,10 @@ func _spawn_impact_puff(at: Vector3) -> void:
 	timer.timeout.connect(mi.queue_free)
 
 func _start_reload() -> void:
+	# v0.8: WeaponManager owns reload (reserve-aware) when present.
+	if _weapon_manager != null:
+		_weapon_manager.start_reload()
+		return
 	if reloading or ammo == mag_size:
 		return
 	reloading = true
@@ -382,6 +656,8 @@ func _on_player_died() -> void:
 	_show_death_overlay()
 
 func _show_death_overlay() -> void:
+	if _armoury_panel != null and _armoury_panel.has_method("close"):
+		_armoury_panel.close()
 	if mobile_hud == null:
 		_pending_death = true
 		return

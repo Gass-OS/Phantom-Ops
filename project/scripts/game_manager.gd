@@ -44,6 +44,27 @@ func add_xp(amount: int) -> bool:
 		return bool(cm.call("add_xp", amount))
 	return false
 
+# v0.8: weapon/wanted persistence lives in CampaignManager
+# (user://save.cfg, sections "weapons" / "wanted"). GameManager
+# holds no weapon or heat state — reset_game() deliberately does
+# NOT touch them; CampaignManager re-applies the saved loadout and
+# heat to fresh manager instances (see campaign_manager.gd).
+# These delegates let the armoury / coordinator flush or re-apply
+# from here. The armoury MUST call save_progress() immediately
+# after a purchase/unlock: the throttled 1 s flush is not fast
+# enough if the player dies and the scene reloads first.
+func save_progress() -> void:
+	var cm := get_node_or_null("/root/CampaignManager")
+	if cm != null and cm.has_method("save_now"):
+		cm.call("save_now")
+
+
+func apply_saved_managers() -> void:
+	var cm := get_node_or_null("/root/CampaignManager")
+	if cm != null and cm.has_method("apply_saved_managers"):
+		cm.call("apply_saved_managers")
+
+
 func reset_game():
 	score = 0
 	kills = 0

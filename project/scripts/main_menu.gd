@@ -3,10 +3,25 @@ extends Node3D
 ## a slow orbiting camera and Aymen (the hero scan) standing in the
 ## plaza. If the 3D city ever fails to build, the gradient background
 ## is shown instead so the menu can never go black.
+## v0.8 — ARMOURY button (built in code, see _build_armoury_button):
+## emits armoury_requested; the coordinator connects it and opens the
+## ArmouryPanel (class ArmouryPanel, open(weapon_manager)). In the
+## menu there is no live WeaponManager in the tree, so the coordinator
+## must supply one (a menu-owned instance, or a loadout from
+## CampaignManager.get_saved_weapons()) before calling open().
+
+## v0.8: emitted when the ARMOURY button is pressed. No panel is
+## created here — the coordinator connects this signal.
+signal armoury_requested
 
 var _sound: SoundManager
 var _camera: Camera3D
 var _angle := 0.0
+# v0.8 (coordinator integration): menu-owned WeaponManager +
+# ArmouryPanel, created lazily on first ARMOURY press. The manager
+# self-loads user://weapons.cfg, so the shop shows the real loadout.
+var _menu_weapon_manager = null
+var _armoury_panel = null
 # v0.7: campaign menu — CONTINUE (highest unlocked chapter),
 # CHAPTER SELECT (5 chapters, locked ones greyed), rank + XP under
 # the hero. DEPLOY starts CampaignManager.current_chapter: the
@@ -53,6 +68,7 @@ func _ready() -> void:
 	$CanvasLayer/UI/LangFR.pressed.connect(_on_language_pressed.bind("fr"))
 	$CanvasLayer/UI/LangEN.pressed.connect(_on_language_pressed.bind("en"))
 	$CanvasLayer/UI/LangAR.pressed.connect(_on_language_pressed.bind("ar"))
+	_build_armoury_button()
 	_apply_language()
 	_update_sound_button()
 
@@ -101,6 +117,7 @@ func _apply_language() -> void:
 	var continue_b := ui.get_node("Continue") as Button
 	var chapter_select := ui.get_node("ChapterSelect") as Button
 	var rank_label := ui.get_node("RankLabel") as Label
+	var armoury_b := ui.get_node_or_null("Armoury") as Button
 	var chapter_title := ui.get_node("ChapterPanel/ChapterTitle") as Label
 	var chapter_close := ui.get_node("ChapterPanel/ChapterClose") as Button
 	title.text = LanguageManager.translate("menu_title")
@@ -108,6 +125,9 @@ func _apply_language() -> void:
 	play.text = "▶  " + LanguageManager.translate("menu_deploy")
 	continue_b.text = "▶  " + LanguageManager.translate("continue_game")
 	chapter_select.text = LanguageManager.translate("chapter_select")
+	if armoury_b != null:
+		armoury_b.text = LanguageManager.translate("armoury_title")
+		LanguageManager.apply_font_to(armoury_b)
 	chapter_title.text = LanguageManager.translate("chapter_select")
 	chapter_close.text = LanguageManager.translate("menu_close")
 	howto.text = LanguageManager.translate("menu_how_to_play")
@@ -137,6 +157,89 @@ func _update_rank_label(rank_label: Label) -> void:
 		rank_name = String(cm.call("rank_name", int(cm.call("get_rank"))))
 		xp = int(cm.call("get_xp"))
 	rank_label.text = "%s  •  XP %d" % [rank_name, xp]
+
+
+## v0.8 ARMOURY — the button is built in code (the scene file keeps
+## its v0.7 layout; no .tscn change). It sits in the centre column
+## between CHAPTER SELECT and HOW TO PLAY, same size/style as its
+## neighbours (300x80, font 24, centred anchors). The column is
+## 1080px tall, so the lower group is pushed down to make room and
+## the footer hint lifted — final offsets (relative to centre):
+##   Armoury 100..180 · HowTo 190..270 · Sound 280..360 ·
+##   LanguageLabel 368..396 · Lang row 404..460 · Adhan 468..524
+##   (bottom edge 540+524 = 1064) · Controls lifted 60px.
+## CONTINUE / DEPLOY / CHAPTER SELECT are untouched (moving them up
+## would overlap the RankLabel at y 270..302).
+func _build_armoury_button() -> void:
+	var ui := $CanvasLayer/UI as Control
+	if ui.get_node_or_null("Armoury") != null:
+		return
+	_set_button_offsets(ui.get_node("HowTo"), 190.0, 270.0)
+	_set_button_offsets(ui.get_node("Sound"), 280.0, 360.0)
+	_set_button_offsets(ui.get_node("LanguageLabel"), 368.0, 396.0)
+	_set_button_offsets(ui.get_node("LangFR"), 404.0, 460.0)
+	_set_button_offsets(ui.get_node("LangEN"), 404.0, 460.0)
+	_set_button_offsets(ui.get_node("LangAR"), 404.0, 460.0)
+	_set_button_offsets(ui.get_node("Adhan"), 468.0, 524.0)
+	var controls := ui.get_node("Controls") as Control
+	if controls != null:
+		controls.offset_top -= 60.0
+		controls.offset_bottom -= 60.0
+	var b := Button.new()
+	b.name = "Armoury"
+	b.anchor_left = 0.5
+	b.anchor_top = 0.5
+	b.anchor_right = 0.5
+	b.anchor_bottom = 0.5
+	b.offset_left = -150.0
+	b.offset_top = 100.0
+	b.offset_right = 150.0
+	b.offset_bottom = 180.0
+	b.add_theme_font_size_override("font_size", 24)
+	b.text = LanguageManager.translate("armoury_title")
+	LanguageManager.apply_font_to(b)
+	b.pressed.connect(_on_armoury_pressed)
+	ui.add_child(b)
+
+
+func _set_button_offsets(c: Control, top: float, bottom: float) -> void:
+	if c == null:
+		return
+	c.offset_top = top
+	c.offset_bottom = bottom
+
+
+func _on_armoury_pressed() -> void:
+	if _sound != null:
+		_sound.play_click()
+	armoury_requested.emit()
+	_open_armoury()
+
+
+# v0.8 (coordinator integration): open the armoury over the menu.
+# A menu-owned WeaponManager (setup(null) — no firing in the menu)
+# is the shop's backend; it self-loads user://weapons.cfg and the
+# panel's buy path flushes the campaign save immediately.
+func _open_armoury() -> void:
+	if _menu_weapon_manager == null:
+		var wm_script: Script = load("res://scripts/weapon_manager.gd")
+		if wm_script == null:
+			return
+		_menu_weapon_manager = wm_script.new()
+		_menu_weapon_manager.name = "MenuWeaponManager"
+		add_child(_menu_weapon_manager)
+		if _menu_weapon_manager.has_method("setup"):
+			_menu_weapon_manager.call("setup", null)
+	if _armoury_panel == null:
+		var panel_script: Script = load("res://scripts/armoury_panel.gd")
+		if panel_script == null:
+			return
+		_armoury_panel = panel_script.new()
+		_armoury_panel.name = "ArmouryPanel"
+		_armoury_panel.visible = false
+		$CanvasLayer.add_child(_armoury_panel)
+	if _armoury_panel.has_method("open"):
+		_armoury_panel.call("open", _menu_weapon_manager)
 
 
 ## Rebuild the chapter list (translated titles, lock state). Called

@@ -171,6 +171,29 @@ static func whoosh_stream() -> AudioStreamWAV:
 	return _cached_stream("whoosh", func() -> AudioStreamWAV:
 		return _noise(1.4, 0.5, 2.0, 0.55))
 
+## v0.8: per-weapon gunshots (procedural, same _noise/_tone style).
+static func pistol_stream() -> AudioStreamWAV:
+	return _cached_stream("pistol", func() -> AudioStreamWAV:
+		return _mix(_noise(0.11, 0.9, 85.0, 0.2), _tone(190.0, 0.10, 0.6, 45.0, 70.0)))
+
+static func smg_stream() -> AudioStreamWAV:
+	return _cached_stream("smg", func() -> AudioStreamWAV:
+		return _mix(_noise(0.07, 0.7, 95.0, 0.2), _tone(250.0, 0.06, 0.45, 60.0, 110.0)))
+
+static func shotgun_stream() -> AudioStreamWAV:
+	return _cached_stream("shotgun", func() -> AudioStreamWAV:
+		return _mix(_noise(0.35, 1.0, 18.0, 0.3), _tone(75.0, 0.30, 0.9, 10.0, 35.0)))
+
+static func sniper_stream() -> AudioStreamWAV:
+	return _cached_stream("sniper", func() -> AudioStreamWAV:
+		return _mix(_noise(0.45, 0.95, 22.0, 0.25), _tone(120.0, 0.40, 0.7, 8.0, 45.0)))
+
+## v0.8: empty-magazine click. play_reload() (clicks) already exists
+## above and is reused for reloads — no duplicate is defined here.
+static func dry_fire_stream() -> AudioStreamWAV:
+	return _cached_stream("dry_fire", func() -> AudioStreamWAV:
+		return _mix(_noise(0.03, 0.5, 140.0, 0.1), _tone(1400.0, 0.04, 0.3, 100.0)))
+
 # ---------------------------------------------------------------- playback
 func _play(stream: AudioStreamWAV, vol_db: float = 0.0) -> void:
 	if not sound_on:
@@ -219,6 +242,22 @@ func play_step() -> void:
 
 func play_whoosh() -> void:
 	_play(whoosh_stream(), -8.0)
+
+## v0.8: per-weapon gunshots + dry fire.
+func play_pistol() -> void:
+	_play(pistol_stream(), -4.0)
+
+func play_smg() -> void:
+	_play(smg_stream(), -6.0)
+
+func play_shotgun() -> void:
+	_play(shotgun_stream(), -3.0)
+
+func play_sniper() -> void:
+	_play(sniper_stream(), -3.0)
+
+func play_dry_fire() -> void:
+	_play(dry_fire_stream(), -8.0)
 
 func start_murmur() -> void:
 	if not is_inside_tree():

@@ -98,7 +98,7 @@ offset_right = 400.0
 offset_bottom = 265.0
 theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.85)
 theme_override_font_sizes/font_size = 18
-text = "v0.7 — Kasserine, Tunisia  •  AYMEN — PHANTOM"
+text = "v0.8 — Kasserine, Tunisia  •  AYMEN — PHANTOM"
 horizontal_alignment = 1
 mouse_filter = 2
 
